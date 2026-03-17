@@ -1,9 +1,10 @@
 import Foundation
 
+@MainActor
 @Observable
 class NutritionViewModel {
     var nutritionInfo: NutritionInfo?
-    var isLoading = false
+    var isLoading = true
     var errorMessage: String?
 
     func loadNutrition(recNum: String) async {
