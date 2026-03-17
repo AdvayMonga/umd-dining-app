@@ -38,7 +38,7 @@ struct NutritionDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Calories hero
-                if let calories = info.nutrition["Calories"] {
+                if let calories = nutritionValue("Calories", from: info.nutrition) {
                     HStack {
                         Spacer()
                         VStack {
@@ -99,9 +99,9 @@ struct NutritionDetailView: View {
 
     private func macrosSection(_ nutrition: [String: String]) -> some View {
         HStack(spacing: 20) {
-            macroItem(label: "Protein", value: nutrition["Protein"], color: .blue)
-            macroItem(label: "Carbs", value: nutrition["Total Carbohydrate"], color: .green)
-            macroItem(label: "Fat", value: nutrition["Total Fat"], color: .orange)
+            macroItem(label: "Protein", value: nutritionValue("Protein", from: nutrition), color: .blue)
+            macroItem(label: "Carbs", value: nutritionValue("Total Carbohydrate", from: nutrition), color: .green)
+            macroItem(label: "Fat", value: nutritionValue("Total Fat", from: nutrition), color: .orange)
         }
         .padding(.horizontal)
     }
@@ -130,9 +130,9 @@ struct NutritionDetailView: View {
                 .padding(.bottom, 8)
 
             ForEach(orderedNutritionKeys(nutrition), id: \.self) { key in
-                if let value = nutrition[key], key != "Calories" {
+                if let value = nutritionValue(key, from: nutrition), normalizedKey(key) != "Calories" {
                     HStack {
-                        Text(key)
+                        Text(normalizedKey(key))
                             .font(.subheadline)
                         Spacer()
                         Text(value)
@@ -147,9 +147,26 @@ struct NutritionDetailView: View {
         }
     }
 
+    private func nutritionValue(_ key: String, from nutrition: [String: String]) -> String? {
+        if let v = nutrition[key] { return v }
+        let normalized = key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        for (k, v) in nutrition {
+            if k.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == normalized {
+                return v
+            }
+        }
+        return nil
+    }
+
+    private func normalizedKey(_ key: String) -> String {
+        key.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
     private func orderedNutritionKeys(_ nutrition: [String: String]) -> [String] {
-        let ordered = macroKeys.filter { nutrition[$0] != nil }
-        let remaining = nutrition.keys.sorted().filter { !macroKeys.contains($0) }
+        let ordered = macroKeys.filter { nutritionValue($0, from: nutrition) != nil }
+        let remaining = nutrition.keys.sorted().filter { key in
+            !macroKeys.contains(where: { $0.lowercased() == normalizedKey(key).lowercased() })
+        }
         return ordered + remaining
     }
 }

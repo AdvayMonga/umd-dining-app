@@ -110,8 +110,8 @@ def get_nutrition_info(rec_num):
     for nutrient in nutrients:
         label = nutrient.find('b')
         if label:
-            name = label.get_text(strip=True)
-            value = nutrient.get_text(strip=True).replace(name, '').strip()
+            name = label.get_text(strip=True).rstrip('.')
+            value = nutrient.get_text(strip=True).replace(label.get_text(strip=True), '').strip()
             if name and value:
                 nutrition[name] = value
 
