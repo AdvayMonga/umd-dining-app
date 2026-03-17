@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+.git/
+.DS_Store
+.claude/
+thingstoadd.txt
