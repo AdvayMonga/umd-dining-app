@@ -2,7 +2,7 @@
 
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 
 BASE_URL = "https://nutrition.umd.edu"
 
@@ -123,23 +123,43 @@ def scrape_dining_hall(db, location_num, date):
     return items
 
 
-def scrape_all_dining_halls(db, date):
-    # Delete old menus (dates before today)
+def scrape_all_dining_halls(db):
+    """Daily scrape: re-scrape today (to catch changes) + scrape 6 days ahead (new day)."""
+    today = datetime.now()
+
+    # Delete menus older than 7 days
+    cutoff = (today - timedelta(days=7)).date()
     all_menus = db.menus.distinct("date")
     for menu_date in all_menus:
         try:
             parsed = datetime.strptime(menu_date, '%m/%d/%Y')
-            if parsed.date() < datetime.now().date():
+            if parsed.date() < cutoff:
                 db.menus.delete_many({"date": menu_date})
         except ValueError:
             pass
 
-    # Delete today's menus for a fresh scrape
-    db.menus.delete_many({"date": date})
+    # Scrape today (double-check) and day +6 (new day)
+    all_items = []
+    for offset in [0, 6]:
+        scrape_date = (today + timedelta(days=offset)).strftime('%-m/%-d/%Y')
+        db.menus.delete_many({"date": scrape_date})
+        for location_num in DINING_HALLS:
+            items = scrape_dining_hall(db, location_num, scrape_date)
+            all_items.extend(items)
+
+    return all_items
+
+
+def scrape_full_week(db):
+    """One-time manual scrape: today + 6 days ahead."""
+    today = datetime.now()
 
     all_items = []
-    for location_num in DINING_HALLS:
-        items = scrape_dining_hall(db, location_num, date)
-        all_items.extend(items)
+    for i in range(7):
+        scrape_date = (today + timedelta(days=i)).strftime('%-m/%-d/%Y')
+        db.menus.delete_many({"date": scrape_date})
+        for location_num in DINING_HALLS:
+            items = scrape_dining_hall(db, location_num, scrape_date)
+            all_items.extend(items)
 
     return all_items

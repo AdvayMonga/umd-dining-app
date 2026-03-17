@@ -2,7 +2,6 @@
 
 import os
 import json
-from datetime import datetime
 from pymongo import MongoClient
 from scraper_core import scrape_all_dining_halls
 
@@ -14,17 +13,15 @@ db = client.get_database()
 
 def lambda_handler(event, context):
     try:
-        date = (event or {}).get("date") or datetime.now().strftime("%-m/%-d/%Y")
-        print(f"Starting scrape for {date}")
+        print("Starting scrape for 7 days")
 
-        items = scrape_all_dining_halls(db, date)
+        items = scrape_all_dining_halls(db)
 
         print(f"Scrape complete: {len(items)} items")
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "success": True,
-                "date": date,
                 "items_scraped": len(items),
             }),
         }

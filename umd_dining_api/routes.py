@@ -1,7 +1,7 @@
 from flask import jsonify, request
 from app import app, db
 from datetime import datetime
-from scraper import scrape_all_dining_halls, scrape_dining_hall, fetch_and_cache_nutrition
+from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 
 @app.route('/')
 def home():
@@ -138,6 +138,17 @@ def scrape():
         return jsonify({
             'success': True,
             'date': date,
+            'items_scraped': len(items)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/scrape-week')
+def scrape_week():
+    try:
+        items = scrape_full_week()
+        return jsonify({
+            'success': True,
             'items_scraped': len(items)
         })
     except Exception as e:

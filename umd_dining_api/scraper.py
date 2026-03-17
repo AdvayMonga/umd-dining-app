@@ -1,7 +1,8 @@
+import re
 import requests
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
@@ -105,15 +106,57 @@ def get_nutrition_info(rec_num):
     soup = BeautifulSoup(response.text, 'html.parser')
 
     nutrition = {}
+
+    # Servings per container (its own div)
+    serv_per = soup.find('div', class_='nutfactsservpercont')
+    if serv_per:
+        nutrition['Servings Per Container'] = serv_per.get_text(strip=True)
+
+    # Serving size (second div has the value, first just says "Serving size")
+    serv_divs = soup.find_all('div', class_='nutfactsservsize')
+    for div in serv_divs:
+        text = div.get_text(strip=True)
+        if text and text.lower() != 'serving size':
+            nutrition['Serving Size'] = text
+            break
+
+    # Calories (in a <p> tag after "Calories per serving")
+    for p in soup.find_all('p'):
+        if p.get_text(strip=True) == 'Calories per serving':
+            next_p = p.find_next_sibling('p')
+            if next_p:
+                nutrition['Calories'] = next_p.get_text(strip=True)
+            break
+
+    # All nutrient spans (bolded and non-bolded)
     nutrients = soup.find_all('span', class_='nutfactstopnutrient')
+    seen_keys = set(nutrition.keys())
 
     for nutrient in nutrients:
+        text = nutrient.get_text(strip=True).replace('\xa0', ' ')
+        if not text or re.match(r'^\d+%$', text) or text.startswith('Includes'):
+            continue
+
         label = nutrient.find('b')
         if label:
             name = label.get_text(strip=True).rstrip('.')
-            value = nutrient.get_text(strip=True).replace(label.get_text(strip=True), '').strip()
-            if name and value:
-                nutrition[name] = value
+            value = text.replace(label.get_text(strip=True), '').strip()
+        else:
+            match = re.match(r'^([A-Za-z\s\-\.]+?)\s*([\d\.]+.*)$', text)
+            if not match:
+                continue
+            name = match.group(1).strip().rstrip('.')
+            value = match.group(2).strip()
+
+        if not name or not value:
+            continue
+
+        if name == 'Calories':
+            value = value.replace('kcal', '').strip()
+
+        if name not in seen_keys:
+            seen_keys.add(name)
+            nutrition[name] = value
 
     ingredients = soup.find('span', class_='labelingredientsvalue')
     if ingredients:
@@ -162,25 +205,37 @@ def scrape_dining_hall(location_num, date):
     return items
 
 def scrape_all_dining_halls(date):
-    """Scrape all dining halls for a date. Cleans old menus, then scrapes fresh."""
-    today = datetime.now().strftime('%-m/%-d/%Y')
-
-    # Delete old menus (dates before today)
+    """Scrape all dining halls for a single date. Cleans menus older than 7 days."""
+    # Delete menus older than 7 days
+    cutoff = (datetime.now() - timedelta(days=7)).date()
     all_menus = db.menus.distinct("date")
     for menu_date in all_menus:
         try:
             parsed = datetime.strptime(menu_date, '%m/%d/%Y')
-            if parsed.date() < datetime.now().date():
+            if parsed.date() < cutoff:
                 db.menus.delete_many({"date": menu_date})
         except ValueError:
             pass
 
-    # Delete today's menus for a fresh scrape
+    # Fresh scrape for the given date
     db.menus.delete_many({"date": date})
 
     all_items = []
     for location_num in DINING_HALLS:
         items = scrape_dining_hall(location_num, date)
+        all_items.extend(items)
+
+    return all_items
+
+
+def scrape_full_week():
+    """One-time scrape: today + 6 days ahead."""
+    today = datetime.now()
+
+    all_items = []
+    for i in range(7):
+        scrape_date = (today + timedelta(days=i)).strftime('%-m/%-d/%Y')
+        items = scrape_all_dining_halls(scrape_date)
         all_items.extend(items)
 
     return all_items
