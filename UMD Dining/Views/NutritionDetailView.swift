@@ -5,9 +5,14 @@ struct NutritionDetailView: View {
     let foodName: String
     @State private var viewModel = NutritionViewModel()
 
-    private let macroKeys = ["Calories", "Total Fat", "Saturated Fat", "Trans Fat",
-                             "Cholesterol", "Sodium", "Total Carbohydrate",
-                             "Dietary Fiber", "Total Sugars", "Protein"]
+    // Already shown elsewhere — exclude from table
+    private let excludeFromTable = ["Calories", "Total Fat", "Total Carbohydrate", "Protein",
+                                     "Serving Size", "Servings Per Container"]
+
+    // Key nutrients shown by default
+    private let keyNutrients = ["Cholesterol", "Sodium", "Total Sugars", "Saturated Fat", "Calcium", "Potassium"]
+
+    @State private var showAllNutrition = false
 
     var body: some View {
         Group {
@@ -52,6 +57,29 @@ struct NutritionDetailView: View {
                         Spacer()
                     }
                     .padding()
+                }
+
+                // Serving info
+                let servingSize = nutritionValue("Serving Size", from: info.nutrition)
+                let servingsPerContainer = nutritionValue("Servings Per Container", from: info.nutrition)
+                if servingSize != nil || servingsPerContainer != nil {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 2) {
+                            if let size = servingSize {
+                                Text("Serving Size: \(size)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let count = servingsPerContainer {
+                                Text(count)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, -12)
                 }
 
                 // Macros bar
@@ -123,27 +151,67 @@ struct NutritionDetailView: View {
     }
 
     private func nutritionTable(_ nutrition: [String: String]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let visibleKey = keyNutrients.filter { nutritionValue($0, from: nutrition) != nil }
+        let extraKeys = nutrition.keys.sorted().filter { key in
+            let norm = normalizedKey(key).lowercased()
+            let isExcluded = excludeFromTable.contains(where: { $0.lowercased() == norm })
+            let isKey = keyNutrients.contains(where: { $0.lowercased() == norm })
+            return !isExcluded && !isKey
+        }
+
+        return VStack(alignment: .leading, spacing: 0) {
             Text("Nutrition Facts")
                 .font(.headline)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
 
-            ForEach(orderedNutritionKeys(nutrition), id: \.self) { key in
-                if let value = nutritionValue(key, from: nutrition), normalizedKey(key) != "Calories" {
-                    HStack {
-                        Text(normalizedKey(key))
-                            .font(.subheadline)
-                        Spacer()
-                        Text(value)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
-                    Divider().padding(.horizontal)
+            ForEach(visibleKey, id: \.self) { key in
+                if let value = nutritionValue(key, from: nutrition) {
+                    nutritionRow(label: normalizedKey(key), value: value)
                 }
             }
+
+            if !extraKeys.isEmpty {
+                Button {
+                    withAnimation { showAllNutrition.toggle() }
+                } label: {
+                    HStack {
+                        Text(showAllNutrition ? "Show Less" : "Show All Nutrition")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Spacer()
+                        Image(systemName: showAllNutrition ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(Color.umdRed)
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                }
+
+                if showAllNutrition {
+                    ForEach(extraKeys, id: \.self) { key in
+                        if let value = nutrition[key] {
+                            nutritionRow(label: normalizedKey(key), value: value)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func nutritionRow(label: String, value: String) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(label)
+                    .font(.subheadline)
+                Spacer()
+                Text(value)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            Divider().padding(.horizontal)
         }
     }
 
@@ -162,13 +230,6 @@ struct NutritionDetailView: View {
         key.trimmingCharacters(in: CharacterSet(charactersIn: "."))
     }
 
-    private func orderedNutritionKeys(_ nutrition: [String: String]) -> [String] {
-        let ordered = macroKeys.filter { nutritionValue($0, from: nutrition) != nil }
-        let remaining = nutrition.keys.sorted().filter { key in
-            !macroKeys.contains(where: { $0.lowercased() == normalizedKey(key).lowercased() })
-        }
-        return ordered + remaining
-    }
 }
 
 struct FlowLayout: Layout {
