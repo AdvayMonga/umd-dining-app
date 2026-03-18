@@ -13,6 +13,7 @@ struct UMD_DiningApp: App {
                     .environment(favoritesManager)
                     .task {
                         await favoritesManager.syncFromServer()
+                        await UserPreferences.shared.syncFromServer()
                     }
             } else {
                 SignInView()

@@ -55,6 +55,17 @@ private struct SuccessResponse: Decodable {
     let success: Bool
 }
 
+struct UserPreferencesData: Decodable, Sendable {
+    let vegetarian: Bool
+    let vegan: Bool
+    let allergens: [String]
+}
+
+private struct PreferencesResponse: Decodable {
+    let success: Bool
+    let data: UserPreferencesData
+}
+
 actor DiningAPIService {
     static let shared = DiningAPIService()
 
@@ -109,6 +120,33 @@ actor DiningAPIService {
     func removeFavorite(userId: String, recNum: String) async throws {
         let body = ["user_id": userId, "rec_num": recNum]
         _ = try await delete("\(baseURL)/favorites", body: body)
+    }
+
+    // MARK: - Preferences
+
+    func fetchPreferences(userId: String) async throws -> UserPreferencesData {
+        let encoded = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
+        let data = try await fetch("\(baseURL)/preferences?user_id=\(encoded)")
+        let response = try JSONDecoder().decode(PreferencesResponse.self, from: data)
+        return response.data
+    }
+
+    func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String]) async throws {
+        guard let url = URL(string: "\(baseURL)/preferences") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "user_id": userId,
+            "vegetarian": vegetarian,
+            "vegan": vegan,
+            "allergens": allergens
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
     }
 
     // MARK: - Networking

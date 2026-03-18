@@ -221,3 +221,43 @@ def remove_favorite():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- User Preferences ---
+
+@app.get('/api/preferences')
+def get_preferences():
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id required'}), 400
+
+        prefs = db.preferences.find_one({'user_id': user_id}, {'_id': 0})
+        if not prefs:
+            prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': []}
+
+        return jsonify({'success': True, 'data': prefs})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.put('/api/preferences')
+def update_preferences():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id required'}), 400
+
+        db.preferences.update_one(
+            {'user_id': user_id},
+            {'$set': {
+                'user_id': user_id,
+                'vegetarian': data.get('vegetarian', False),
+                'vegan': data.get('vegan', False),
+                'allergens': data.get('allergens', []),
+            }},
+            upsert=True
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

@@ -1,17 +1,18 @@
 import Foundation
 
+@MainActor
 @Observable
 class UserPreferences {
     static let shared = UserPreferences()
 
     var vegetarian: Bool {
-        didSet { save() }
+        didSet { saveLocally(); syncToServer() }
     }
     var vegan: Bool {
-        didSet { save() }
+        didSet { saveLocally(); syncToServer() }
     }
     var allergens: Set<String> {
-        didSet { save() }
+        didSet { saveLocally(); syncToServer() }
     }
 
     private let vegetarianKey = "pref_vegetarian"
@@ -40,9 +41,34 @@ class UserPreferences {
         return false
     }
 
-    private func save() {
+    /// Fetch preferences from the API (only for signed-in, non-guest users)
+    func syncFromServer() async {
+        guard let userId = AuthManager.shared.userId, !AuthManager.shared.isGuest else { return }
+        do {
+            let prefs = try await DiningAPIService.shared.fetchPreferences(userId: userId)
+            vegetarian = prefs.vegetarian
+            vegan = prefs.vegan
+            allergens = Set(prefs.allergens)
+        } catch {
+            // Keep local values if API fails
+        }
+    }
+
+    private func saveLocally() {
         UserDefaults.standard.set(vegetarian, forKey: vegetarianKey)
         UserDefaults.standard.set(vegan, forKey: veganKey)
         UserDefaults.standard.set(Array(allergens), forKey: allergensKey)
+    }
+
+    private func syncToServer() {
+        guard let userId = AuthManager.shared.userId, !AuthManager.shared.isGuest else { return }
+        Task {
+            try? await DiningAPIService.shared.updatePreferences(
+                userId: userId,
+                vegetarian: vegetarian,
+                vegan: vegan,
+                allergens: Array(allergens)
+            )
+        }
     }
 }

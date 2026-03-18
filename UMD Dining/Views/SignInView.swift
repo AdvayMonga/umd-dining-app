@@ -18,7 +18,7 @@ struct SignInView: View {
                     .fontWeight(.bold)
                     .foregroundStyle(Color.umdRed)
 
-                Text("Sign in to save your favorites")
+                Text("Sign in to save your favorites across devices")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -43,8 +43,16 @@ struct SignInView: View {
             .frame(height: 50)
             .padding(.horizontal, 40)
 
+            Button {
+                authManager.continueAsGuest()
+            } label: {
+                Text("Continue as Guest")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
-                .frame(height: 60)
+                .frame(height: 40)
         }
     }
 }
