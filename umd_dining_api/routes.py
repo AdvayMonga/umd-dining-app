@@ -153,3 +153,71 @@ def scrape_week():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- Auth & Favorites ---
+
+@app.post('/api/auth/apple')
+def auth_apple():
+    try:
+        data = request.get_json()
+        apple_user_id = data.get('apple_user_id')
+        if not apple_user_id:
+            return jsonify({'success': False, 'error': 'apple_user_id required'}), 400
+
+        db.users.update_one(
+            {'apple_user_id': apple_user_id},
+            {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now().isoformat()}},
+            upsert=True
+        )
+
+        return jsonify({'success': True, 'user_id': apple_user_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/favorites')
+def get_favorites():
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id required'}), 400
+
+        favs = list(db.favorites.find({'user_id': user_id}, {'_id': 0}))
+        return jsonify({'success': True, 'data': favs})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/favorites')
+def add_favorite():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        rec_num = data.get('rec_num')
+        name = data.get('name', '')
+
+        if not user_id or not rec_num:
+            return jsonify({'success': False, 'error': 'user_id and rec_num required'}), 400
+
+        db.favorites.update_one(
+            {'user_id': user_id, 'rec_num': rec_num},
+            {'$set': {'user_id': user_id, 'rec_num': rec_num, 'name': name, 'added_at': datetime.now().isoformat()}},
+            upsert=True
+        )
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.delete('/api/favorites')
+def remove_favorite():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        rec_num = data.get('rec_num')
+
+        if not user_id or not rec_num:
+            return jsonify({'success': False, 'error': 'user_id and rec_num required'}), 400
+
+        db.favorites.delete_one({'user_id': user_id, 'rec_num': rec_num})
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

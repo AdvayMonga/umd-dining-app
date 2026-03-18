@@ -2,10 +2,22 @@ import SwiftUI
 
 @main
 struct UMD_DiningApp: App {
+    @State private var authManager = AuthManager.shared
+    @State private var favoritesManager = FavoritesManager.shared
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(FavoritesManager.shared)
+            if authManager.isSignedIn {
+                ContentView()
+                    .environment(authManager)
+                    .environment(favoritesManager)
+                    .task {
+                        await favoritesManager.syncFromServer()
+                    }
+            } else {
+                SignInView()
+                    .environment(authManager)
+            }
         }
     }
 }

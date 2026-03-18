@@ -36,6 +36,25 @@ private struct SearchResponse: Decodable {
     let data: [SearchResult]
 }
 
+private struct FavoritesResponse: Decodable {
+    let success: Bool
+    let data: [FavoriteItem]
+}
+
+struct FavoriteItem: Decodable, Sendable {
+    let recNum: String
+    let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case recNum = "rec_num"
+        case name
+    }
+}
+
+private struct SuccessResponse: Decodable {
+    let success: Bool
+}
+
 actor DiningAPIService {
     static let shared = DiningAPIService()
 
@@ -68,6 +87,32 @@ actor DiningAPIService {
         return response.data
     }
 
+    // MARK: - Auth & Favorites
+
+    func registerAppleUser(userId: String) async throws {
+        let body = ["apple_user_id": userId]
+        _ = try await post("\(baseURL)/auth/apple", body: body)
+    }
+
+    func fetchFavorites(userId: String) async throws -> [FavoriteItem] {
+        let encoded = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
+        let data = try await fetch("\(baseURL)/favorites?user_id=\(encoded)")
+        let response = try JSONDecoder().decode(FavoritesResponse.self, from: data)
+        return response.data
+    }
+
+    func addFavorite(userId: String, recNum: String, name: String) async throws {
+        let body = ["user_id": userId, "rec_num": recNum, "name": name]
+        _ = try await post("\(baseURL)/favorites", body: body)
+    }
+
+    func removeFavorite(userId: String, recNum: String) async throws {
+        let body = ["user_id": userId, "rec_num": recNum]
+        _ = try await delete("\(baseURL)/favorites", body: body)
+    }
+
+    // MARK: - Networking
+
     private func fetch(_ urlString: String) async throws -> Data {
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
@@ -85,5 +130,31 @@ actor DiningAPIService {
         } catch {
             throw APIError.networkError(error)
         }
+    }
+
+    private func post(_ urlString: String, body: [String: String]) async throws -> Data {
+        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
+        return data
+    }
+
+    private func delete(_ urlString: String, body: [String: String]) async throws -> Data {
+        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
+        return data
     }
 }
