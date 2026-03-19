@@ -270,3 +270,16 @@ struct FlowLayout: Layout {
         return (CGSize(width: maxWidth, height: y + rowHeight), positions)
     }
 }
+
+#Preview {
+    NavigationStack {
+        NutritionDetailView(recNum: "12345", foodName: "Grilled Chicken Breast")
+    }
+}
+
+#Preview("With Mock Data") {
+    // This preview uses a pre-loaded view model to skip the API call
+    NavigationStack {
+        NutritionDetailView(recNum: "mock", foodName: "Chicken Congee")
+    }
+}

@@ -66,3 +66,8 @@ struct SearchOverlay: View {
         }
     }
 }
+
+#Preview {
+    SearchOverlay()
+        .environment(FavoritesManager.shared)
+}

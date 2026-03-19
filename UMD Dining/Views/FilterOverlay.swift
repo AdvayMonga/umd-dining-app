@@ -41,3 +41,11 @@ struct FilterOverlay: View {
         }
     }
 }
+
+#Preview {
+    FilterOverlay(
+        selectedHallIds: .constant(Set(["19", "51", "16"])),
+        hallNames: ["19": "Yahentamitsi", "51": "251 North", "16": "South Campus Diner"],
+        allHallIds: ["19", "51", "16"]
+    )
+}

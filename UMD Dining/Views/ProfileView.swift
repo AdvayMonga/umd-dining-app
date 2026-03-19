@@ -50,3 +50,8 @@ struct ProfileView: View {
         }
     }
 }
+
+#Preview {
+    ProfileView()
+        .environment(FavoritesManager.shared)
+}
