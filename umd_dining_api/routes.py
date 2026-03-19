@@ -62,11 +62,10 @@ def get_menu():
                 'station': entry.get('station', 'Unknown'),
                 'dietary_icons': entry.get('dietary_icons', []),
                 'nutrition_fetched': food.get('nutrition_fetched', False),
+                'nutrition': food.get('nutrition', {}),
+                'allergens': food.get('allergens', ''),
+                'ingredients': food.get('ingredients', ''),
             }
-            if food.get('nutrition_fetched'):
-                item['nutrition'] = food.get('nutrition', {})
-                item['allergens'] = food.get('allergens', '')
-                item['ingredients'] = food.get('ingredients', '')
             items.append(item)
 
         return jsonify({

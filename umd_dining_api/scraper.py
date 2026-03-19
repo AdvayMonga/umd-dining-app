@@ -1,4 +1,5 @@
 import re
+import time
 import requests
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
@@ -169,7 +170,7 @@ def get_nutrition_info(rec_num):
     return nutrition
 
 def scrape_dining_hall(location_num, date):
-    """Scrape a dining hall's menu for a date. Adds menu entries and food stubs (no nutrition fetch)."""
+    """Scrape a dining hall's menu for a date. Adds menu entries, food stubs, and pre-fetches nutrition."""
     items = parse_menu_page(get_menu_page(location_num, date), location_num, date)
 
     for item in items:
@@ -201,6 +202,16 @@ def scrape_dining_hall(location_num, date):
             }},
             upsert=True
         )
+
+    # Pre-fetch nutrition for items that don't have it yet
+    for item in items:
+        food = db.foods.find_one({"rec_num": item["rec_num"]})
+        if food and not food.get("nutrition_fetched"):
+            try:
+                fetch_and_cache_nutrition(item["rec_num"])
+                time.sleep(0.5)  # Rate limit to avoid overwhelming UMD's site
+            except Exception as e:
+                print(f"Failed to fetch nutrition for {item['name']}: {e}")
 
     return items
 

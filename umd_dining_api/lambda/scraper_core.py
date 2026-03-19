@@ -1,5 +1,7 @@
 """Core scraping logic for UMD dining halls. Used by Lambda handler."""
 
+import re
+import time
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -89,6 +91,100 @@ def parse_menu_page(html, dining_hall_id, date):
     return items
 
 
+def get_nutrition_info(rec_num):
+    url = f"{BASE_URL}/label.aspx?RecNumAndPort={rec_num}"
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    nutrition = {}
+
+    # Servings per container
+    serv_per = soup.find('div', class_='nutfactsservpercont')
+    if serv_per:
+        nutrition['Servings Per Container'] = serv_per.get_text(strip=True)
+
+    # Serving size
+    serv_divs = soup.find_all('div', class_='nutfactsservsize')
+    for div in serv_divs:
+        text = div.get_text(strip=True)
+        if text and text.lower() != 'serving size':
+            nutrition['Serving Size'] = text
+            break
+
+    # Calories
+    for p in soup.find_all('p'):
+        if p.get_text(strip=True) == 'Calories per serving':
+            next_p = p.find_next_sibling('p')
+            if next_p:
+                nutrition['Calories'] = next_p.get_text(strip=True)
+            break
+
+    # All nutrient spans
+    nutrients = soup.find_all('span', class_='nutfactstopnutrient')
+    seen_keys = set(nutrition.keys())
+
+    for nutrient in nutrients:
+        text = nutrient.get_text(strip=True).replace('\xa0', ' ')
+        if not text or re.match(r'^\d+%$', text) or text.startswith('Includes'):
+            continue
+
+        label = nutrient.find('b')
+        if label:
+            name = label.get_text(strip=True).rstrip('.')
+            value = text.replace(label.get_text(strip=True), '').strip()
+        else:
+            match = re.match(r'^([A-Za-z\s\-\.]+?)\s*([\d\.]+.*)$', text)
+            if not match:
+                continue
+            name = match.group(1).strip().rstrip('.')
+            value = match.group(2).strip()
+
+        if not name or not value:
+            continue
+
+        if name == 'Calories':
+            value = value.replace('kcal', '').strip()
+
+        if name not in seen_keys:
+            seen_keys.add(name)
+            nutrition[name] = value
+
+    ingredients = soup.find('span', class_='labelingredientsvalue')
+    if ingredients:
+        nutrition['ingredients'] = ingredients.get_text(strip=True)
+
+    allergens = soup.find('span', class_='labelallergensvalue')
+    if allergens:
+        nutrition['allergens'] = allergens.get_text(strip=True)
+
+    return nutrition
+
+
+def fetch_and_cache_nutrition(db, rec_num):
+    food = db.foods.find_one({"rec_num": rec_num})
+    if food and food.get("nutrition_fetched"):
+        return food
+
+    nutrition_data = get_nutrition_info(rec_num)
+
+    update = {
+        "nutrition_fetched": True,
+        "nutrition": {k: v for k, v in nutrition_data.items() if k not in ("ingredients", "allergens")},
+        "allergens": nutrition_data.get("allergens", ""),
+        "ingredients": nutrition_data.get("ingredients", ""),
+    }
+
+    db.foods.update_one(
+        {"rec_num": rec_num},
+        {"$set": update},
+        upsert=True
+    )
+
+    return db.foods.find_one({"rec_num": rec_num})
+
+
 def scrape_dining_hall(db, location_num, date):
     items = parse_menu_page(get_menu_page(location_num, date), location_num, date)
 
@@ -119,6 +215,16 @@ def scrape_dining_hall(db, location_num, date):
             }},
             upsert=True,
         )
+
+    # Pre-fetch nutrition for items that don't have it yet
+    for item in items:
+        food = db.foods.find_one({"rec_num": item["rec_num"]})
+        if food and not food.get("nutrition_fetched"):
+            try:
+                fetch_and_cache_nutrition(db, item["rec_num"])
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"Failed to fetch nutrition for {item['name']}: {e}")
 
     return items
 
