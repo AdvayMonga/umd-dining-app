@@ -34,15 +34,14 @@ def parse_menu_page(html, dining_hall_id, date):
     soup = BeautifulSoup(html, 'html.parser')
     items = []
 
-    # Determine meal period labels from the tab nav
+    # Determine meal period labels from tab links (href="#pane-N")
     tab_labels = {}
-    tabs = soup.find('ul', class_='nav-tabs')
-    if tabs:
-        for tab_link in tabs.find_all('a', role='tab'):
-            pane_id = (tab_link.get('aria-controls') or '').strip()
-            label = tab_link.get_text(strip=True)
-            if pane_id and label:
-                tab_labels[pane_id] = label
+    for a in soup.find_all('a', href=lambda x: x and x.startswith('#')):
+        href = a.get('href', '')
+        pane_id = href.lstrip('#')
+        label = a.get_text(strip=True)
+        if pane_id and label:
+            tab_labels[pane_id] = label
 
     # Parse food items from each tab pane, grouped by station (card)
     panes = soup.find_all('div', class_='tab-pane')
@@ -51,7 +50,7 @@ def parse_menu_page(html, dining_hall_id, date):
         meal_period = tab_labels.get(pane_id, 'Unknown')
 
         for card in pane.find_all('div', class_='card'):
-            title_el = card.find('h5', class_='card-title')
+            title_el = card.find('h3', class_='card-title')
             station = title_el.get_text(strip=True) if title_el else 'Unknown'
 
             for row in card.find_all('div', class_='menu-item-row'):
@@ -97,6 +96,7 @@ def parse_menu_page(html, dining_hall_id, date):
             })
 
     return items
+
 
 def get_nutrition_info(rec_num):
     url = f"{BASE_URL}/label.aspx?RecNumAndPort={rec_num}"
