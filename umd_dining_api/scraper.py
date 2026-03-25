@@ -36,12 +36,12 @@ def parse_menu_page(html, dining_hall_id, date):
     items = []
 
     # Determine meal period labels from tab links (href="#pane-N")
+    valid_pane_ids = {pane.get('id') for pane in soup.find_all('div', class_='tab-pane') if pane.get('id')}
     tab_labels = {}
     for a in soup.find_all('a', href=lambda x: x and x.startswith('#')):
-        href = a.get('href', '')
-        pane_id = href.lstrip('#')
+        pane_id = a.get('href', '').lstrip('#')
         label = a.get_text(strip=True)
-        if pane_id and label:
+        if pane_id in valid_pane_ids and label:
             tab_labels[pane_id] = label
 
     # Parse food items from each tab pane, grouped by station (card)
