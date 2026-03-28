@@ -10,6 +10,7 @@ def home():
         'version': '2.0',
         'endpoints': {
             'dining_halls': '/api/dining-halls',
+            'available_dates': '/api/available-dates',
             'menu': '/api/menu?date=...&dining_hall_id=...',
             'nutrition': '/api/nutrition?rec_num=...',
             'search': '/api/search?q=...',
@@ -28,6 +29,18 @@ def get_dining_halls():
         })
     except Exception as e:
         return jsonify({'success': False,'error': str(e)}), 500
+
+@app.get('/api/available-dates')
+def get_available_dates():
+    try:
+        dates = db.menus.distinct("date")
+        return jsonify({
+            'success': True,
+            'count': len(dates),
+            'data': sorted(dates)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.get('/api/menu')
 def get_menu():
