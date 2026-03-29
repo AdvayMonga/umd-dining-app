@@ -94,7 +94,7 @@ struct HomeView: View {
                 }
             }
             Spacer()
-        } else if viewModel.displayItems.isEmpty {
+        } else if viewModel.displayRows.isEmpty {
             Spacer()
             ContentUnavailableView(
                 "No Items",
@@ -105,14 +105,22 @@ struct HomeView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 1) {
-                    ForEach(viewModel.displayItems) { item in
-                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId))) {
-                            FoodItemRow(
-                                item: item,
-                                diningHallName: viewModel.diningHallName(for: item.diningHallId)
+                    ForEach(viewModel.displayRows) { row in
+                        switch row {
+                        case .stationHeader(let station, let hallId):
+                            StationHeaderRow(
+                                station: station,
+                                diningHallName: viewModel.diningHallName(for: hallId)
                             )
+                        case .menuItem(let item):
+                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId))) {
+                                FoodItemRow(
+                                    item: item,
+                                    diningHallName: viewModel.diningHallName(for: item.diningHallId)
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
