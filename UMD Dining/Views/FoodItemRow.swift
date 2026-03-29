@@ -60,10 +60,10 @@ struct FoodItemRow: View {
 
     private func tagColor(for tag: String) -> Color {
         switch tag {
-        case "Favorite":         return .red
-        case "Favorite Station": return .orange
-        case "Trending":         return .purple
-        case "High Protein":     return .blue
+        case "Favorite":         return .pink
+        case "Favorite Station": return .red
+        case "Trending":         return .orange
+        case "High Protein":     return .purple
         default:                 return .gray
         }
     }

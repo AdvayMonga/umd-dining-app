@@ -46,6 +46,7 @@ class HomeViewModel {
     }
 
     var displayRows: [FeedRow] {
+        // 1. Apply all active filters
         let filtered = allItems.filter { item in
             item.mealPeriod == selectedMealPeriod
             && selectedHallIds.contains(item.diningHallId)
@@ -53,12 +54,33 @@ class HomeViewModel {
             && !sessionShouldHide(item: item)
         }
 
-        // Always include food favorites; top 20 of the rest (already ranked by backend)
+        // 2. Separate favorites from non-favorites; scored from untagged
         let foodFavs = filtered.filter { FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let rest = filtered.filter { !FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let selected = foodFavs + rest.prefix(20)
+        let nonFavs  = filtered.filter { !FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
+        let scored   = nonFavs.filter { $0.tag != nil }  // score > 0, tag assigned by backend
+        let unscored = nonFavs.filter { $0.tag == nil }  // score == 0, untagged entrees (sides already removed by backend)
 
-        // Group by (station, diningHallId) preserving insertion order
+        // 3. Take up to 20 scored items, balanced across selected halls
+        let slotsPerHall = max(4, 20 / max(1, selectedHallIds.count))
+        var hallCounts: [String: Int] = [:]
+        var picked: [MenuItem] = []
+        for item in scored {
+            guard picked.count < 20 else { break }
+            let count = hallCounts[item.diningHallId, default: 0]
+            if count < slotsPerHall {
+                picked.append(item)
+                hallCounts[item.diningHallId] = count + 1
+            }
+        }
+
+        // 4. Fill remaining slots with untagged entrees (backend already shuffled them by date)
+        let needed = max(0, 20 - picked.count)
+        picked += unscored.prefix(needed)
+
+        // 5. Combine: food favorites always first, then the 20 picked items
+        let selected = foodFavs + picked
+
+        // 6. Group by (station, diningHallId) preserving insertion order
         var groups: [(station: String, hallId: String, items: [MenuItem])] = []
         var keyToIndex: [String: Int] = [:]
         for item in selected {
@@ -71,19 +93,17 @@ class HomeViewModel {
             }
         }
 
-        // Stable sort: favorited stations float to top
-        let sorted = groups.sorted { a, b in
-            FavoritesManager.shared.isFavoriteStation(a.station)
-            && !FavoritesManager.shared.isFavoriteStation(b.station)
+        // 7. Float favorited stations to top (stable sort)
+        let sorted = groups.sorted {
+            FavoritesManager.shared.isFavoriteStation($0.station)
+            && !FavoritesManager.shared.isFavoriteStation($1.station)
         }
 
-        // Flatten into FeedRow array
+        // 8. Flatten to FeedRow
         var rows: [FeedRow] = []
         for group in sorted {
             rows.append(.stationHeader(station: group.station, diningHallId: group.hallId))
-            for item in group.items {
-                rows.append(.menuItem(item))
-            }
+            group.items.forEach { rows.append(.menuItem($0)) }
         }
         return rows
     }
