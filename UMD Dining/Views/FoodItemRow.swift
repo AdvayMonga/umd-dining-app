@@ -62,6 +62,7 @@ struct FoodItemRow: View {
         switch tag {
         case "Favorite":         return .red
         case "Favorite Station": return .orange
+        case "Trending":         return .purple
         case "High Protein":     return .blue
         default:                 return .gray
         }
