@@ -51,6 +51,19 @@ struct FavoriteItem: Decodable, Sendable {
     }
 }
 
+private struct StationFavoritesResponse: Decodable {
+    let success: Bool
+    let data: [StationFavoriteItem]
+}
+
+struct StationFavoriteItem: Decodable, Sendable {
+    let stationName: String
+
+    enum CodingKeys: String, CodingKey {
+        case stationName = "station_name"
+    }
+}
+
 private struct SuccessResponse: Decodable {
     let success: Bool
 }
@@ -120,6 +133,25 @@ actor DiningAPIService {
     func removeFavorite(userId: String, recNum: String) async throws {
         let body = ["user_id": userId, "rec_num": recNum]
         _ = try await delete("\(baseURL)/favorites", body: body)
+    }
+
+    // MARK: - Station Favorites
+
+    func fetchStationFavorites(userId: String) async throws -> [StationFavoriteItem] {
+        let encoded = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
+        let data = try await fetch("\(baseURL)/station-favorites?user_id=\(encoded)")
+        let response = try JSONDecoder().decode(StationFavoritesResponse.self, from: data)
+        return response.data
+    }
+
+    func addStationFavorite(userId: String, stationName: String) async throws {
+        let body = ["user_id": userId, "station_name": stationName]
+        _ = try await post("\(baseURL)/station-favorites", body: body)
+    }
+
+    func removeStationFavorite(userId: String, stationName: String) async throws {
+        let body = ["user_id": userId, "station_name": stationName]
+        _ = try await delete("\(baseURL)/station-favorites", body: body)
     }
 
     // MARK: - Preferences

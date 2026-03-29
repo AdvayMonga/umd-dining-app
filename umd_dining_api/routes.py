@@ -166,6 +166,49 @@ def scrape_week():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# --- Station Favorites ---
+
+@app.get('/api/station-favorites')
+def get_station_favorites():
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id required'}), 400
+        favs = list(db.station_favorites.find({'user_id': user_id}, {'_id': 0}))
+        return jsonify({'success': True, 'data': favs})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/station-favorites')
+def add_station_favorite():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        station_name = data.get('station_name')
+        if not user_id or not station_name:
+            return jsonify({'success': False, 'error': 'user_id and station_name required'}), 400
+        db.station_favorites.update_one(
+            {'user_id': user_id, 'station_name': station_name},
+            {'$set': {'user_id': user_id, 'station_name': station_name, 'added_at': datetime.now().isoformat()}},
+            upsert=True
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.delete('/api/station-favorites')
+def remove_station_favorite():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        station_name = data.get('station_name')
+        if not user_id or not station_name:
+            return jsonify({'success': False, 'error': 'user_id and station_name required'}), 400
+        db.station_favorites.delete_one({'user_id': user_id, 'station_name': station_name})
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # --- Auth & Favorites ---
 
 @app.post('/api/auth/apple')

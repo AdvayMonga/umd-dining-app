@@ -13,9 +13,19 @@ struct FoodItemRow: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
 
-                Text("\(item.station) · \(diningHallName)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("\(item.station) · \(diningHallName)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        favorites.toggleStation(name: item.station)
+                    } label: {
+                        Image(systemName: favorites.isFavoriteStation(item.station) ? "star.fill" : "star")
+                            .font(.system(size: 10))
+                            .foregroundStyle(favorites.isFavoriteStation(item.station) ? .yellow : .gray.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 if !item.dietaryIcons.isEmpty {
                     HStack(spacing: 4) {
