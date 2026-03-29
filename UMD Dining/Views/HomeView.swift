@@ -104,7 +104,7 @@ struct HomeView: View {
             Spacer()
         } else {
             ScrollView {
-                LazyVStack(spacing: 1) {
+                LazyVStack(spacing: 8) {
                     ForEach(viewModel.displayRows) { row in
                         switch row {
                         case .stationHeader(let station, let hallId):
@@ -123,6 +123,8 @@ struct HomeView: View {
                         }
                     }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
             .refreshable {
                 await viewModel.loadMenus()

@@ -7,13 +7,16 @@ struct StationHeaderRow: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Text(station)
-                    .font(.headline)
+                    .font(.subheadline)
                     .fontWeight(.bold)
                     .foregroundStyle(.white)
+                Text("·")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.7))
                 Text(diningHallName)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.85))
             }
             Spacer()
@@ -27,7 +30,8 @@ struct StationHeaderRow: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 10)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .background(Color.umdRed)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
