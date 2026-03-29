@@ -2,6 +2,7 @@ from flask import jsonify, request
 from app import app, db
 from datetime import datetime
 import random
+import threading
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 
 @app.route('/')
@@ -104,11 +105,11 @@ def get_ranked_menu():
                 return 80, 'Favorite Station'
             if not is_side:
                 protein = get_protein(nutrition)
-                if protein is not None and protein >= 20:
-                    return 50, 'High Protein'
                 calories = get_calories(nutrition)
-                if calories is not None and calories <= 400:
-                    return 30, 'Low Calorie'
+                if (protein is not None and protein >= 5 and
+                        calories is not None and calories > 0 and
+                        (protein * 4) / calories >= 0.25):
+                    return 50, 'High Protein'
             if is_side:
                 return -1, None  # hidden unless tagged above
             return 0, None  # untagged entree
@@ -251,31 +252,18 @@ def search_menu():
 
 @app.post('/api/scrape')
 def scrape():
-    try:
-        date = request.args.get('date', datetime.now().strftime('%-m/%-d/%Y'))
-        dining_hall_id = request.args.get('dining_hall_id')
-        if dining_hall_id:
-            items = scrape_dining_hall(dining_hall_id, date)
-        else:
-            items = scrape_all_dining_halls(date)
-        return jsonify({
-            'success': True,
-            'date': date,
-            'items_scraped': len(items)
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    date = request.args.get('date', datetime.now().strftime('%-m/%-d/%Y'))
+    dining_hall_id = request.args.get('dining_hall_id')
+    if dining_hall_id:
+        threading.Thread(target=scrape_dining_hall, args=(dining_hall_id, date), daemon=True).start()
+    else:
+        threading.Thread(target=scrape_all_dining_halls, args=(date,), daemon=True).start()
+    return jsonify({'success': True, 'date': date, 'status': 'scrape started'})
 
 @app.post('/api/scrape-week')
 def scrape_week():
-    try:
-        items = scrape_full_week()
-        return jsonify({
-            'success': True,
-            'items_scraped': len(items)
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    threading.Thread(target=scrape_full_week, daemon=True).start()
+    return jsonify({'success': True, 'status': 'scrape started'})
 
 # --- Station Favorites ---
 

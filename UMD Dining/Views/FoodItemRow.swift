@@ -73,7 +73,6 @@ struct FoodItemRow: View {
         case "Favorite":         return .red
         case "Favorite Station": return .orange
         case "High Protein":     return .blue
-        case "Low Calorie":      return .green
         default:                 return .gray
         }
     }
