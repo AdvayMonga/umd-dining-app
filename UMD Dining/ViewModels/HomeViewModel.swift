@@ -65,6 +65,7 @@ class HomeViewModel {
     func loadMenus() async {
         isLoading = true
         errorMessage = nil
+        allItems = []
         shuffleSeed = UInt64.random(in: 0...UInt64.max)
 
         do {
