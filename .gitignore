@@ -20,6 +20,10 @@ Secrets.plist
 secrets.json
 credentials.json
 
+# Python
+umd_dining_api/venv/
+umd_dining_api/lambda/layer/
+
 # CocoaPods
 Pods/
 
