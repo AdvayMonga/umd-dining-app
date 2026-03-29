@@ -255,14 +255,14 @@ def scrape():
     date = request.args.get('date', datetime.now().strftime('%-m/%-d/%Y'))
     dining_hall_id = request.args.get('dining_hall_id')
     if dining_hall_id:
-        threading.Thread(target=scrape_dining_hall, args=(dining_hall_id, date), daemon=True).start()
+        threading.Thread(target=scrape_dining_hall, args=(dining_hall_id, date), daemon=False).start()
     else:
-        threading.Thread(target=scrape_all_dining_halls, args=(date,), daemon=True).start()
+        threading.Thread(target=scrape_all_dining_halls, args=(date,), daemon=False).start()
     return jsonify({'success': True, 'date': date, 'status': 'scrape started'})
 
 @app.post('/api/scrape-week')
 def scrape_week():
-    threading.Thread(target=scrape_full_week, daemon=True).start()
+    threading.Thread(target=scrape_full_week, daemon=False).start()
     return jsonify({'success': True, 'status': 'scrape started'})
 
 # --- Station Favorites ---
