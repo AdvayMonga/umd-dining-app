@@ -53,9 +53,12 @@ struct HomeView: View {
             FilterOverlay(
                 selectedHallIds: $viewModel.selectedHallIds,
                 hallNames: viewModel.diningHallNames,
-                allHallIds: viewModel.allHallIds
+                allHallIds: viewModel.allHallIds,
+                filterVegetarian: $viewModel.filterVegetarian,
+                filterVegan: $viewModel.filterVegan,
+                filterAllergens: $viewModel.filterAllergens
             )
-            .presentationDetents([.medium])
+            .presentationDetents([.large])
         }
         .fullScreenCover(isPresented: $showSearch) {
             SearchOverlay()

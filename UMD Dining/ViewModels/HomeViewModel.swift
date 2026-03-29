@@ -18,6 +18,11 @@ class HomeViewModel {
     let allHallIds = ["19", "51", "16"]
     let mealPeriods = ["Breakfast", "Brunch", "Lunch", "Dinner"]
 
+    // Temporary session-only filters (not saved or synced)
+    var filterVegetarian: Bool = false
+    var filterVegan: Bool = false
+    var filterAllergens: Set<String> = []
+
     var availableMealPeriods: [String] {
         let available = Set(allItems.map(\.mealPeriod))
         return mealPeriods.filter { available.contains($0) }
@@ -29,7 +34,17 @@ class HomeViewModel {
             item.mealPeriod == selectedMealPeriod
             && selectedHallIds.contains(item.diningHallId)
             && !UserPreferences.shared.shouldHide(item: item)
+            && !sessionShouldHide(item: item)
         }
+    }
+
+    private func sessionShouldHide(item: MenuItem) -> Bool {
+        if filterVegan && !item.dietaryIcons.contains("vegan") { return true }
+        if filterVegetarian && !item.dietaryIcons.contains("vegetarian") { return true }
+        for allergen in filterAllergens {
+            if item.dietaryIcons.contains(allergen) { return true }
+        }
+        return false
     }
 
     func diningHallName(for id: String) -> String {

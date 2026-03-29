@@ -4,7 +4,19 @@ struct FilterOverlay: View {
     @Binding var selectedHallIds: Set<String>
     let hallNames: [String: String]
     let allHallIds: [String]
+
+    @Binding var filterVegetarian: Bool
+    @Binding var filterVegan: Bool
+    @Binding var filterAllergens: Set<String>
+
     @Environment(\.dismiss) private var dismiss
+
+    private let allergenOptions = [
+        "Contains dairy",
+        "Contains egg",
+        "Contains gluten",
+        "Contains soy"
+    ]
 
     var body: some View {
         NavigationStack {
@@ -23,15 +35,34 @@ struct FilterOverlay: View {
                             }
                         ))
                     }
-                }
 
-                Section {
                     Button("Select All") {
                         selectedHallIds = Set(allHallIds)
                     }
                 }
+
+                Section("Dietary Preferences") {
+                    Toggle("Vegetarian", isOn: $filterVegetarian)
+                    Toggle("Vegan", isOn: $filterVegan)
+                }
+
+                Section("Allergens to Avoid") {
+                    ForEach(allergenOptions, id: \.self) { allergen in
+                        Toggle(allergen.replacingOccurrences(of: "Contains ", with: ""),
+                               isOn: Binding(
+                                get: { filterAllergens.contains(allergen) },
+                                set: { isOn in
+                                    if isOn {
+                                        filterAllergens.insert(allergen)
+                                    } else {
+                                        filterAllergens.remove(allergen)
+                                    }
+                                }
+                               ))
+                    }
+                }
             }
-            .navigationTitle("Filter by Location")
+            .navigationTitle("Filter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -46,6 +77,9 @@ struct FilterOverlay: View {
     FilterOverlay(
         selectedHallIds: .constant(Set(["19", "51", "16"])),
         hallNames: ["19": "Yahentamitsi", "51": "251 North", "16": "South Campus Diner"],
-        allHallIds: ["19", "51", "16"]
+        allHallIds: ["19", "51", "16"],
+        filterVegetarian: .constant(false),
+        filterVegan: .constant(false),
+        filterAllergens: .constant([])
     )
 }
