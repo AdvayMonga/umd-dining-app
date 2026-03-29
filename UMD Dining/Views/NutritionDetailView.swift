@@ -3,6 +3,8 @@ import SwiftUI
 struct NutritionDetailView: View {
     let recNum: String
     let foodName: String
+    var station: String? = nil
+    var diningHallName: String? = nil
     @State private var viewModel = NutritionViewModel()
     @Environment(FavoritesManager.self) private var favorites
 
@@ -91,6 +93,20 @@ struct NutritionDetailView: View {
                         Spacer()
                     }
                     .padding(.top, -12)
+                }
+
+                // Location
+                if station != nil || diningHallName != nil {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.caption)
+                            .foregroundStyle(Color.umdRed)
+                        Text([station, diningHallName].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, -8)
                 }
 
                 // Macros bar

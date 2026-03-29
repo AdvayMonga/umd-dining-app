@@ -103,7 +103,7 @@ struct HomeView: View {
             ScrollView {
                 LazyVStack(spacing: 1) {
                     ForEach(viewModel.displayItems) { item in
-                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name)) {
+                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId))) {
                             FoodItemRow(
                                 item: item,
                                 diningHallName: viewModel.diningHallName(for: item.diningHallId)
