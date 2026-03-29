@@ -37,7 +37,12 @@ class HomeViewModel {
 
     var availableMealPeriods: [String] {
         let available = Set(allItems.map(\.mealPeriod))
-        return mealPeriods.filter { available.contains($0) }
+        let weekday = Calendar.current.component(.weekday, from: selectedDate)
+        let isWeekend = weekday == 1 || weekday == 7
+        return mealPeriods.filter { period in
+            available.contains(period)
+            && !(isWeekend && (period == "Breakfast" || period == "Lunch"))
+        }
     }
 
     var displayRows: [FeedRow] {
