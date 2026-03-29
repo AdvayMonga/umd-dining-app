@@ -4,6 +4,7 @@ struct NutritionDetailView: View {
     let recNum: String
     let foodName: String
     @State private var viewModel = NutritionViewModel()
+    @Environment(FavoritesManager.self) private var favorites
 
     // Already shown elsewhere — exclude from table
     private let excludeFromTable = ["Calories", "Total Fat", "Total Carbohydrate", "Protein",
@@ -34,6 +35,16 @@ struct NutritionDetailView: View {
         }
         .navigationTitle(foodName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    favorites.toggleFood(recNum: recNum, name: foodName)
+                } label: {
+                    Image(systemName: favorites.isFavorite(recNum: recNum) ? "heart.fill" : "heart")
+                        .foregroundStyle(favorites.isFavorite(recNum: recNum) ? Color.umdRed : .gray)
+                }
+            }
+        }
         .task {
             await viewModel.loadNutrition(recNum: recNum)
         }
