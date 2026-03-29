@@ -97,6 +97,20 @@ actor DiningAPIService {
         return response.data
     }
 
+    func fetchRankedMenu(date: String, diningHallIds: [String], userId: String?) async throws -> [MenuItem] {
+        let encodedDate = date.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? date
+        var urlString = "\(baseURL)/ranked-menu?date=\(encodedDate)"
+        for hallId in diningHallIds {
+            urlString += "&dining_hall_ids=\(hallId)"
+        }
+        if let userId, let encodedUser = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            urlString += "&user_id=\(encodedUser)"
+        }
+        let data = try await fetch(urlString)
+        let response = try JSONDecoder().decode(MenuResponse.self, from: data)
+        return response.data
+    }
+
     func fetchNutrition(recNum: String) async throws -> NutritionInfo {
         let encoded = recNum.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? recNum
         let data = try await fetch("\(baseURL)/nutrition?rec_num=\(encoded)")

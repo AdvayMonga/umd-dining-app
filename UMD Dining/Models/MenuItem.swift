@@ -12,6 +12,7 @@ struct MenuItem: Decodable, Identifiable, Sendable {
     let allergens: String?
     let ingredients: String?
     let nutrition: [String: String]?
+    let tag: String?
 
     var id: String { recNum }
 
@@ -27,5 +28,6 @@ struct MenuItem: Decodable, Identifiable, Sendable {
         case allergens
         case ingredients
         case nutrition
+        case tag
     }
 }

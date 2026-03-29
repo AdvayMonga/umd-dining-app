@@ -18,27 +18,18 @@ class HomeViewModel {
     let allHallIds = ["19", "51", "16"]
     let mealPeriods = ["Breakfast", "Brunch", "Lunch", "Dinner"]
 
-    private var shuffleSeed = UInt64.random(in: 0...UInt64.max)
-
     var availableMealPeriods: [String] {
         let available = Set(allItems.map(\.mealPeriod))
         return mealPeriods.filter { available.contains($0) }
     }
 
+    // Preserve backend order — just filter locally for meal period, hall, and preferences
     var displayItems: [MenuItem] {
-        let filtered = allItems.filter { item in
+        allItems.filter { item in
             item.mealPeriod == selectedMealPeriod
             && selectedHallIds.contains(item.diningHallId)
             && !UserPreferences.shared.shouldHide(item: item)
         }
-
-        let favorites = filtered.filter { FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let nonFavorites = filtered.filter { !FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-
-        var rng = SeededRNG(seed: shuffleSeed)
-        let shuffled = nonFavorites.shuffled(using: &rng)
-
-        return favorites + shuffled
     }
 
     func diningHallName(for id: String) -> String {
@@ -66,24 +57,14 @@ class HomeViewModel {
         isLoading = true
         errorMessage = nil
         allItems = []
-        shuffleSeed = UInt64.random(in: 0...UInt64.max)
 
         do {
-            let results = try await withThrowingTaskGroup(of: [MenuItem].self) { group in
-                for hallId in allHallIds {
-                    group.addTask {
-                        try await DiningAPIService.shared.fetchMenu(
-                            date: self.dateString, diningHallId: hallId
-                        )
-                    }
-                }
-                var all: [MenuItem] = []
-                for try await items in group {
-                    all.append(contentsOf: items)
-                }
-                return all
-            }
-            allItems = results
+            let userId = await AuthManager.shared.userId
+            allItems = try await DiningAPIService.shared.fetchRankedMenu(
+                date: dateString,
+                diningHallIds: allHallIds,
+                userId: userId
+            )
             if !availableMealPeriods.contains(selectedMealPeriod),
                let first = availableMealPeriods.first {
                 selectedMealPeriod = first
@@ -92,21 +73,5 @@ class HomeViewModel {
             errorMessage = error.localizedDescription
         }
         isLoading = false
-    }
-}
-
-struct SeededRNG: RandomNumberGenerator {
-    var state: UInt64
-
-    init(seed: UInt64) {
-        state = seed
-    }
-
-    mutating func next() -> UInt64 {
-        state &+= 0x9e3779b97f4a7c15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xbf58476d1ce4e5b9
-        z = (z ^ (z >> 27)) &* 0x94d049bb133111eb
-        return z ^ (z >> 31)
     }
 }

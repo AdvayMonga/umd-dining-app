@@ -1,6 +1,7 @@
 from flask import jsonify, request
 from app import app, db
 from datetime import datetime
+import random
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 
 @app.route('/')
@@ -39,6 +40,116 @@ def get_available_dates():
             'count': len(dates),
             'data': sorted(dates)
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/ranked-menu')
+def get_ranked_menu():
+    try:
+        date = request.args.get('date')
+        dining_hall_ids = request.args.getlist('dining_hall_ids') or ['19', '51', '16']
+        user_id = request.args.get('user_id')
+
+        if not date:
+            return jsonify({'success': False, 'error': 'date required'}), 400
+
+        # Fetch menu entries for the date and halls
+        menu_entries = list(db.menus.find(
+            {'date': date, 'dining_hall_id': {'$in': dining_hall_ids}},
+            {'_id': 0}
+        ))
+
+        # Join with foods collection
+        rec_nums = [e['rec_num'] for e in menu_entries]
+        foods = {f['rec_num']: f for f in db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0})}
+
+        # Fetch user favorites and station favorites
+        fav_rec_nums = set()
+        fav_stations = set()
+        if user_id:
+            for fav in db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0}):
+                fav_rec_nums.add(fav['rec_num'])
+            for sf in db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0}):
+                fav_stations.add(sf['station_name'])
+
+        def parse_number(value):
+            try:
+                return float(''.join(c for c in str(value) if c.isdigit() or c == '.'))
+            except Exception:
+                return None
+
+        def get_protein(nutrition):
+            for key in ['Protein', 'Total Protein', 'protein']:
+                val = parse_number(nutrition.get(key))
+                if val is not None:
+                    return val
+            return None
+
+        def get_calories(nutrition):
+            for key in ['Calories', 'calories', 'Energy']:
+                val = parse_number(nutrition.get(key))
+                if val is not None:
+                    return val
+            return None
+
+        def score_item(entry, food):
+            station = entry.get('station', '')
+            is_side = 'side' in station.lower()
+            rec_num = entry['rec_num']
+            nutrition = food.get('nutrition') or {}
+
+            if rec_num in fav_rec_nums:
+                return 100, 'Favorite'
+            if station in fav_stations:
+                return 80, 'Favorite Station'
+            if not is_side:
+                protein = get_protein(nutrition)
+                if protein is not None and protein >= 20:
+                    return 50, 'High Protein'
+                calories = get_calories(nutrition)
+                if calories is not None and calories <= 400:
+                    return 30, 'Low Calorie'
+            if is_side:
+                return -1, None  # hidden unless tagged above
+            return 0, None  # untagged entree
+
+        tagged_items = []
+        untagged_items = []
+
+        for entry in menu_entries:
+            food = foods.get(entry['rec_num'], {})
+            score, tag = score_item(entry, food)
+            if score < 0:
+                continue  # drop untagged sides
+
+            item = {
+                'name': food.get('name', ''),
+                'rec_num': entry['rec_num'],
+                'dining_hall_id': entry['dining_hall_id'],
+                'date': entry['date'],
+                'meal_period': entry.get('meal_period', 'Unknown'),
+                'station': entry.get('station', 'Unknown'),
+                'dietary_icons': entry.get('dietary_icons', []),
+                'nutrition_fetched': food.get('nutrition_fetched', False),
+                'nutrition': food.get('nutrition', {}),
+                'allergens': food.get('allergens', ''),
+                'ingredients': food.get('ingredients', ''),
+                'tag': tag,
+            }
+
+            if score > 0:
+                tagged_items.append((score, item))
+            else:
+                untagged_items.append(item)
+
+        # Sort tagged by score descending, shuffle untagged with date-seeded RNG
+        tagged_items.sort(key=lambda x: -x[0])
+        rng = random.Random(hash(date))
+        rng.shuffle(untagged_items)
+
+        result = [item for _, item in tagged_items] + untagged_items
+
+        return jsonify({'success': True, 'count': len(result), 'data': result})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

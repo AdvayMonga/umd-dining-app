@@ -13,6 +13,16 @@ struct FoodItemRow: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
 
+                if let tag = item.tag {
+                    Text(tag)
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(tagColor(for: tag).opacity(0.15))
+                        .foregroundStyle(tagColor(for: tag))
+                        .clipShape(Capsule())
+                }
+
                 HStack(spacing: 4) {
                     Text("\(item.station) · \(diningHallName)")
                         .font(.caption)
@@ -58,6 +68,16 @@ struct FoodItemRow: View {
         .background(Color(.systemBackground))
     }
 
+    private func tagColor(for tag: String) -> Color {
+        switch tag {
+        case "Favorite":         return .red
+        case "Favorite Station": return .orange
+        case "High Protein":     return .blue
+        case "Low Calorie":      return .green
+        default:                 return .gray
+        }
+    }
+
     private func shortLabel(for icon: String) -> String {
         switch icon {
         case "vegan": return "V"
@@ -91,7 +111,8 @@ struct FoodItemRow: View {
             nutritionFetched: false,
             allergens: nil,
             ingredients: nil,
-            nutrition: nil
+            nutrition: nil,
+            tag: "High Protein"
         ),
         diningHallName: "Yahentamitsi Dining Hall"
     )
