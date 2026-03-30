@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 @main
@@ -14,9 +15,15 @@ struct UMD_DiningApp: App {
                     .environment(authManager)
                     .environment(favoritesManager)
                     .task {
+                        await authManager.checkAppleCredentialState()
                         await authManager.refreshTokenIfNeeded()
                         await favoritesManager.syncFromServer()
                         await UserPreferences.shared.syncFromServer()
+                    }
+                    .onReceive(NotificationCenter.default.publisher(
+                        for: ASAuthorizationAppleIDProvider.credentialRevokedNotification
+                    )) { _ in
+                        authManager.signOut()
                     }
             } else {
                 SignInView()

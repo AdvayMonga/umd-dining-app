@@ -83,6 +83,10 @@ struct NutritionDetailView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(Color.umdRed)
                             }
+                        } else {
+                            Text("Unavailable today")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     Spacer()

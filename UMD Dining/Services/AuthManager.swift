@@ -61,6 +61,19 @@ class AuthManager {
         }
     }
 
+    func checkAppleCredentialState() async {
+        guard let userId, !isGuest else { return }
+        let provider = ASAuthorizationAppleIDProvider()
+        do {
+            let state = try await provider.credentialState(forUserID: userId)
+            if state == .revoked || state == .notFound {
+                signOut()
+            }
+        } catch {
+            // Network error — don't sign out
+        }
+    }
+
     func signOut() {
         userId = nil
         jwtToken = nil
@@ -68,6 +81,7 @@ class AuthManager {
         deleteFromKeychain(key: keychainKey)
         deleteFromKeychain(key: jwtKey)
         UserDefaults.standard.removeObject(forKey: guestKey)
+        FavoritesManager.shared.clearAll()
     }
 
     // MARK: - Keychain

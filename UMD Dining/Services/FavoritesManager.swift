@@ -72,6 +72,11 @@ class FavoritesManager {
         }
     }
 
+    func clearAll() {
+        favoriteFoods = [:]
+        favoriteStations = []
+    }
+
     private func saveFoodsLocally() {
         UserDefaults.standard.set(favoriteFoods, forKey: foodsKey)
     }

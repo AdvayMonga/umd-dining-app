@@ -50,6 +50,12 @@ struct ProfileView: View {
                         }
                     }
                 }
+
+                Section {
+                    Button("Sign Out", role: .destructive) {
+                        AuthManager.shared.signOut()
+                    }
+                }
             }
             .navigationTitle("Profile")
         }
