@@ -89,7 +89,7 @@ private struct AuthResponse: Decodable {
 actor DiningAPIService {
     static let shared = DiningAPIService()
 
-    private let baseURL = "https://umd-dining-api-prod.eba-zfimp7uy.us-east-1.elasticbeanstalk.com/api"
+    private let baseURL = "https://api.umddining.com/api"
 
     // MARK: - Public endpoints
 
