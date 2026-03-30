@@ -3,6 +3,9 @@ import SwiftUI
 struct StationHeaderRow: View {
     let station: String
     let diningHallName: String
+    let isExpanded: Bool
+    let isDiscovery: Bool
+    let onToggle: () -> Void
     @Environment(FavoritesManager.self) private var favorites
 
     var body: some View {
@@ -28,10 +31,15 @@ struct StationHeaderRow: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .foregroundStyle(.white.opacity(0.85))
+                .font(.caption.weight(.semibold))
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
         .background(Color.umdRed)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
+        .onTapGesture { onToggle() }
     }
 }

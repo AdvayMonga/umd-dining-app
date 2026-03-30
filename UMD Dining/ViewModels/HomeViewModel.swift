@@ -1,12 +1,12 @@
 import Foundation
 
 enum FeedRow: Identifiable {
-    case stationHeader(station: String, diningHallId: String)
+    case stationHeader(station: String, diningHallId: String, isDiscovery: Bool)
     case menuItem(MenuItem)
 
     var id: String {
         switch self {
-        case .stationHeader(let s, let h): return "header_\(s)_\(h)"
+        case .stationHeader(let s, let h, _): return "header_\(s)_\(h)"
         case .menuItem(let item): return "item_\(item.id)"
         }
     }
@@ -35,6 +35,10 @@ class HomeViewModel {
     var filterVegan: Bool = false
     var filterAllergens: Set<String> = []
 
+    // Expansion state — reset on each load
+    private var userCollapsedStations: Set<String> = []
+    private var userExpandedDiscovery: Set<String> = []
+
     var availableMealPeriods: [String] {
         let available = Set(allItems.map(\.mealPeriod))
         let weekday = Calendar.current.component(.weekday, from: selectedDate)
@@ -45,22 +49,45 @@ class HomeViewModel {
         }
     }
 
+    func toggleStationExpansion(station: String, hallId: String, isDiscovery: Bool) {
+        let key = "\(station)_\(hallId)"
+        if isDiscovery {
+            if userExpandedDiscovery.contains(key) { userExpandedDiscovery.remove(key) }
+            else { userExpandedDiscovery.insert(key) }
+        } else {
+            if userCollapsedStations.contains(key) { userCollapsedStations.remove(key) }
+            else { userCollapsedStations.insert(key) }
+        }
+    }
+
+    func isStationExpanded(station: String, hallId: String, isDiscovery: Bool) -> Bool {
+        let key = "\(station)_\(hallId)"
+        return isDiscovery
+            ? userExpandedDiscovery.contains(key)
+            : !userCollapsedStations.contains(key)
+    }
+
     var displayRows: [FeedRow] {
-        // 1. Apply all active filters
+        // Full filters: meal + hall + dietary/allergen
         let filtered = allItems.filter { item in
             item.mealPeriod == selectedMealPeriod
             && selectedHallIds.contains(item.diningHallId)
             && !UserPreferences.shared.shouldHide(item: item)
             && !sessionShouldHide(item: item)
         }
+        // Minimal filter: meal + hall only (discovery previews ignore dietary filters)
+        let minimalFiltered = allItems.filter {
+            $0.mealPeriod == selectedMealPeriod && selectedHallIds.contains($0.diningHallId)
+        }
 
-        // 2. Separate favorites from non-favorites; scored from untagged
-        let foodFavs = filtered.filter { FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let nonFavs  = filtered.filter { !FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let scored   = nonFavs.filter { $0.tag != nil }  // score > 0, tag assigned by backend
-        let unscored = nonFavs.filter { $0.tag == nil }  // score == 0, untagged entrees (sides already removed by backend)
+        // --- Build 20-item selected pool ---
+        let foodFavs    = filtered.filter { FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
+        let nonFoodFavs = filtered.filter { !FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
+        let stationFavs = nonFoodFavs.filter { FavoritesManager.shared.isFavoriteStation($0.station) }
+        let rest        = nonFoodFavs.filter { !FavoritesManager.shared.isFavoriteStation($0.station) }
+        let scored      = rest.filter { $0.tag != nil }
+        let unscored    = rest.filter { $0.tag == nil }
 
-        // 3. Take up to 20 scored items, balanced across selected halls
         let slotsPerHall = max(4, 20 / max(1, selectedHallIds.count))
         var hallCounts: [String: Int] = [:]
         var picked: [MenuItem] = []
@@ -72,39 +99,78 @@ class HomeViewModel {
                 hallCounts[item.diningHallId] = count + 1
             }
         }
+        picked += unscored.prefix(max(0, 20 - picked.count))
+        let selected = foodFavs + stationFavs + picked
 
-        // 4. Fill remaining slots with untagged entrees (backend already shuffled them by date)
-        let needed = max(0, 20 - picked.count)
-        picked += unscored.prefix(needed)
-
-        // 5. Combine: food favorites always first, then the 20 picked items
-        let selected = foodFavs + picked
-
-        // 6. Group by (station, diningHallId) preserving insertion order
-        var groups: [(station: String, hallId: String, items: [MenuItem])] = []
+        // --- Build recommended groups (stations with items in selected) ---
+        var recommendedGroups: [(station: String, hallId: String, items: [MenuItem])] = []
         var keyToIndex: [String: Int] = [:]
         for item in selected {
             let key = "\(item.station)_\(item.diningHallId)"
             if let idx = keyToIndex[key] {
-                groups[idx].items.append(item)
+                recommendedGroups[idx].items.append(item)
             } else {
-                keyToIndex[key] = groups.count
-                groups.append((station: item.station, hallId: item.diningHallId, items: [item]))
+                keyToIndex[key] = recommendedGroups.count
+                recommendedGroups.append((item.station, item.diningHallId, [item]))
             }
         }
-
-        // 7. Float favorited stations to top (stable sort)
-        let sorted = groups.sorted {
+        let sortedRecommended = recommendedGroups.sorted {
             FavoritesManager.shared.isFavoriteStation($0.station)
             && !FavoritesManager.shared.isFavoriteStation($1.station)
         }
 
-        // 8. Flatten to FeedRow
-        var rows: [FeedRow] = []
-        for group in sorted {
-            rows.append(.stationHeader(station: group.station, diningHallId: group.hallId))
-            group.items.forEach { rows.append(.menuItem($0)) }
+        // --- Build discovery groups (in minimalFiltered but not in recommended) ---
+        let recommendedKeys = Set(recommendedGroups.map { "\($0.station)_\($0.hallId)" })
+        var discoveryKeys: [String] = []
+        var seenDiscovery: Set<String> = []
+        for item in minimalFiltered {
+            let key = "\(item.station)_\(item.diningHallId)"
+            if !recommendedKeys.contains(key) && !seenDiscovery.contains(key) {
+                discoveryKeys.append(key)
+                seenDiscovery.insert(key)
+            }
         }
+        let discoveryGroups: [(station: String, hallId: String)] = discoveryKeys.compactMap { key in
+            guard let item = minimalFiltered.first(where: { "\($0.station)_\($0.diningHallId)" == key })
+            else { return nil }
+            return (item.station, item.diningHallId)
+        }.sorted {
+            let aFav = FavoritesManager.shared.isFavoriteStation($0.station)
+            let bFav = FavoritesManager.shared.isFavoriteStation($1.station)
+            if aFav != bFav { return aFav }
+            return $0.station < $1.station
+        }
+
+        // --- Flatten to FeedRow ---
+        var rows: [FeedRow] = []
+
+        for group in sortedRecommended {
+            let expanded = isStationExpanded(station: group.station, hallId: group.hallId, isDiscovery: false)
+            rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: false))
+            if expanded {
+                let items: [MenuItem]
+                if FavoritesManager.shared.isFavoriteStation(group.station) {
+                    // Favorited: show ALL items from this station (no cap)
+                    items = filtered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
+                } else {
+                    items = group.items
+                }
+                items.forEach { rows.append(.menuItem($0)) }
+            }
+        }
+
+        for group in discoveryGroups {
+            let expanded = isStationExpanded(station: group.station, hallId: group.hallId, isDiscovery: true)
+            rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: true))
+            if expanded {
+                // 3 items from minimalFiltered — ignores dietary filters, backend already shuffled
+                minimalFiltered
+                    .filter { $0.station == group.station && $0.diningHallId == group.hallId }
+                    .prefix(3)
+                    .forEach { rows.append(.menuItem($0)) }
+            }
+        }
+
         return rows
     }
 
@@ -142,6 +208,8 @@ class HomeViewModel {
         isLoading = true
         errorMessage = nil
         allItems = []
+        userCollapsedStations = []
+        userExpandedDiscovery = []
 
         do {
             let userId = await AuthManager.shared.userId

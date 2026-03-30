@@ -66,14 +66,30 @@ struct HomeView: View {
     }
 
     private var mealPicker: some View {
-        Picker("Meal", selection: $viewModel.selectedMealPeriod) {
+        HStack(spacing: 8) {
             ForEach(viewModel.availableMealPeriods, id: \.self) { period in
-                Text(period).tag(period)
+                let isSelected = viewModel.selectedMealPeriod == period
+                Button {
+                    viewModel.selectedMealPeriod = period
+                } label: {
+                    Text(period)
+                        .font(.body)
+                        .fontWeight(isSelected ? .bold : .regular)
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(isSelected ? Color(.systemBackground) : Color(.systemGray5))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(.systemGray4), lineWidth: isSelected ? 1 : 0)
+                        )
+                }
+                .buttonStyle(.plain)
             }
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
     }
 
     @ViewBuilder
@@ -107,10 +123,13 @@ struct HomeView: View {
                 LazyVStack(spacing: 8) {
                     ForEach(viewModel.displayRows) { row in
                         switch row {
-                        case .stationHeader(let station, let hallId):
+                        case .stationHeader(let station, let hallId, let isDiscovery):
                             StationHeaderRow(
                                 station: station,
-                                diningHallName: viewModel.diningHallName(for: hallId)
+                                diningHallName: viewModel.diningHallName(for: hallId),
+                                isExpanded: viewModel.isStationExpanded(station: station, hallId: hallId, isDiscovery: isDiscovery),
+                                isDiscovery: isDiscovery,
+                                onToggle: { viewModel.toggleStationExpansion(station: station, hallId: hallId, isDiscovery: isDiscovery) }
                             )
                         case .menuItem(let item):
                             NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId))) {
