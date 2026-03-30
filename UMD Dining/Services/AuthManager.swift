@@ -8,13 +8,16 @@ class AuthManager {
 
     var isSignedIn: Bool { userId != nil }
     private(set) var userId: String?
+    private(set) var jwtToken: String?
     private(set) var isGuest: Bool = false
 
     private let keychainKey = "com.umddining.appleUserId"
+    private let jwtKey = "com.umddining.jwtToken"
     private let guestKey = "com.umddining.isGuest"
 
     init() {
-        userId = loadFromKeychain()
+        userId = loadFromKeychain(key: keychainKey)
+        jwtToken = loadFromKeychain(key: jwtKey)
         isGuest = UserDefaults.standard.bool(forKey: guestKey)
     }
 
@@ -22,43 +25,50 @@ class AuthManager {
         let userIdentifier = credential.user
         userId = userIdentifier
         isGuest = false
-        saveToKeychain(userIdentifier)
+        saveToKeychain(userIdentifier, key: keychainKey)
         UserDefaults.standard.set(false, forKey: guestKey)
-        try? await DiningAPIService.shared.registerAppleUser(userId: userIdentifier)
+
+        if let token = try? await DiningAPIService.shared.registerAppleUser(userId: userIdentifier) {
+            jwtToken = token
+            saveToKeychain(token, key: jwtKey)
+        }
     }
 
     func continueAsGuest() {
         let guestId = "guest_\(UUID().uuidString)"
         userId = guestId
         isGuest = true
-        saveToKeychain(guestId)
+        jwtToken = nil
+        saveToKeychain(guestId, key: keychainKey)
         UserDefaults.standard.set(true, forKey: guestKey)
     }
 
     func signOut() {
         userId = nil
+        jwtToken = nil
         isGuest = false
-        deleteFromKeychain()
+        deleteFromKeychain(key: keychainKey)
+        deleteFromKeychain(key: jwtKey)
         UserDefaults.standard.removeObject(forKey: guestKey)
     }
 
     // MARK: - Keychain
 
-    private func saveToKeychain(_ value: String) {
+    private func saveToKeychain(_ value: String, key: String) {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keychainKey,
+            kSecAttrAccount as String: key,
             kSecValueData as String: data
         ]
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
     }
 
-    private func loadFromKeychain() -> String? {
+    private func loadFromKeychain(key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keychainKey,
+            kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -68,10 +78,10 @@ class AuthManager {
         return String(data: data, encoding: .utf8)
     }
 
-    private func deleteFromKeychain() {
+    private func deleteFromKeychain(key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keychainKey
+            kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
     }

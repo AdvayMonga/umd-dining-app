@@ -5,6 +5,7 @@ enum APIError: LocalizedError {
     case networkError(Error)
     case decodingError(Error)
     case serverError(Int)
+    case unauthorized
 
     nonisolated var errorDescription: String? {
         switch self {
@@ -12,6 +13,7 @@ enum APIError: LocalizedError {
         case .networkError(let e): return "Network error: \(e.localizedDescription)"
         case .decodingError(let e): return "Data error: \(e.localizedDescription)"
         case .serverError(let code): return "Server error: \(code)"
+        case .unauthorized: return "Session expired. Please sign in again."
         }
     }
 }
@@ -79,10 +81,17 @@ private struct PreferencesResponse: Decodable {
     let data: UserPreferencesData
 }
 
+private struct AuthResponse: Decodable {
+    let success: Bool
+    let token: String
+}
+
 actor DiningAPIService {
     static let shared = DiningAPIService()
 
-    private let baseURL = "http://umd-dining-api-prod.eba-zfimp7uy.us-east-1.elasticbeanstalk.com/api"
+    private let baseURL = "https://umd-dining-api-prod.eba-zfimp7uy.us-east-1.elasticbeanstalk.com/api"
+
+    // MARK: - Public endpoints
 
     func fetchDiningHalls() async throws -> [DiningHall] {
         let data = try await fetch("\(baseURL)/dining-halls")
@@ -103,10 +112,9 @@ actor DiningAPIService {
         for hallId in diningHallIds {
             urlString += "&dining_hall_ids=\(hallId)"
         }
-        if let userId, let encodedUser = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            urlString += "&user_id=\(encodedUser)"
-        }
-        let data = try await fetch(urlString)
+        // Send JWT if available; server extracts user_id from it
+        let token = await AuthManager.shared.jwtToken
+        let data = try await fetch(urlString, token: token)
         let response = try JSONDecoder().decode(MenuResponse.self, from: data)
         return response.data
     }
@@ -125,86 +133,101 @@ actor DiningAPIService {
         return response.data
     }
 
-    // MARK: - Auth & Favorites
+    // MARK: - Auth
 
-    func registerAppleUser(userId: String) async throws {
+    func registerAppleUser(userId: String) async throws -> String {
         let body = ["apple_user_id": userId]
-        _ = try await post("\(baseURL)/auth/apple", body: body)
+        let data = try await post("\(baseURL)/auth/apple", body: body)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: data)
+        return response.token
     }
 
+    // MARK: - Favorites (auth required)
+
     func fetchFavorites(userId: String) async throws -> [FavoriteItem] {
-        let encoded = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
-        let data = try await fetch("\(baseURL)/favorites?user_id=\(encoded)")
+        let token = await AuthManager.shared.jwtToken
+        let data = try await fetch("\(baseURL)/favorites", token: token)
         let response = try JSONDecoder().decode(FavoritesResponse.self, from: data)
         return response.data
     }
 
     func addFavorite(userId: String, recNum: String, name: String) async throws {
-        let body = ["user_id": userId, "rec_num": recNum, "name": name]
-        _ = try await post("\(baseURL)/favorites", body: body)
+        let token = await AuthManager.shared.jwtToken
+        let body = ["rec_num": recNum, "name": name]
+        _ = try await post("\(baseURL)/favorites", body: body, token: token)
     }
 
     func removeFavorite(userId: String, recNum: String) async throws {
-        let body = ["user_id": userId, "rec_num": recNum]
-        _ = try await delete("\(baseURL)/favorites", body: body)
+        let token = await AuthManager.shared.jwtToken
+        let body = ["rec_num": recNum]
+        _ = try await delete("\(baseURL)/favorites", body: body, token: token)
     }
 
-    // MARK: - Station Favorites
+    // MARK: - Station Favorites (auth required)
 
     func fetchStationFavorites(userId: String) async throws -> [StationFavoriteItem] {
-        let encoded = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
-        let data = try await fetch("\(baseURL)/station-favorites?user_id=\(encoded)")
+        let token = await AuthManager.shared.jwtToken
+        let data = try await fetch("\(baseURL)/station-favorites", token: token)
         let response = try JSONDecoder().decode(StationFavoritesResponse.self, from: data)
         return response.data
     }
 
     func addStationFavorite(userId: String, stationName: String) async throws {
-        let body = ["user_id": userId, "station_name": stationName]
-        _ = try await post("\(baseURL)/station-favorites", body: body)
+        let token = await AuthManager.shared.jwtToken
+        let body = ["station_name": stationName]
+        _ = try await post("\(baseURL)/station-favorites", body: body, token: token)
     }
 
     func removeStationFavorite(userId: String, stationName: String) async throws {
-        let body = ["user_id": userId, "station_name": stationName]
-        _ = try await delete("\(baseURL)/station-favorites", body: body)
+        let token = await AuthManager.shared.jwtToken
+        let body = ["station_name": stationName]
+        _ = try await delete("\(baseURL)/station-favorites", body: body, token: token)
     }
 
-    // MARK: - Preferences
+    // MARK: - Preferences (auth required)
 
     func fetchPreferences(userId: String) async throws -> UserPreferencesData {
-        let encoded = userId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? userId
-        let data = try await fetch("\(baseURL)/preferences?user_id=\(encoded)")
+        let token = await AuthManager.shared.jwtToken
+        let data = try await fetch("\(baseURL)/preferences", token: token)
         let response = try JSONDecoder().decode(PreferencesResponse.self, from: data)
         return response.data
     }
 
     func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String]) async throws {
+        let token = await AuthManager.shared.jwtToken
         guard let url = URL(string: "\(baseURL)/preferences") else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let t = token {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
         let body: [String: Any] = [
-            "user_id": userId,
             "vegetarian": vegetarian,
             "vegan": vegan,
             "allergens": allergens
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw APIError.serverError(http.statusCode)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 { await handleUnauthorized(); throw APIError.unauthorized }
+            if !(200...299).contains(http.statusCode) { throw APIError.serverError(http.statusCode) }
         }
     }
 
     // MARK: - Networking
 
-    private func fetch(_ urlString: String) async throws -> Data {
-        guard let url = URL(string: urlString) else {
-            throw APIError.invalidURL
+    private func fetch(_ urlString: String, token: String? = nil) async throws -> Data {
+        guard let url = URL(string: urlString) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        if let t = token {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
         }
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                throw APIError.serverError(http.statusCode)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 401 { await handleUnauthorized(); throw APIError.unauthorized }
+                if !(200...299).contains(http.statusCode) { throw APIError.serverError(http.statusCode) }
             }
             return data
         } catch let error as APIError {
@@ -216,29 +239,42 @@ actor DiningAPIService {
         }
     }
 
-    private func post(_ urlString: String, body: [String: String]) async throws -> Data {
+    private func post(_ urlString: String, body: [String: String], token: String? = nil) async throws -> Data {
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let t = token {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw APIError.serverError(http.statusCode)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 { await handleUnauthorized(); throw APIError.unauthorized }
+            if !(200...299).contains(http.statusCode) { throw APIError.serverError(http.statusCode) }
         }
         return data
     }
 
-    private func delete(_ urlString: String, body: [String: String]) async throws -> Data {
+    private func delete(_ urlString: String, body: [String: String], token: String? = nil) async throws -> Data {
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let t = token {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw APIError.serverError(http.statusCode)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 { await handleUnauthorized(); throw APIError.unauthorized }
+            if !(200...299).contains(http.statusCode) { throw APIError.serverError(http.statusCode) }
         }
         return data
+    }
+
+    @MainActor
+    private func handleUnauthorized() {
+        AuthManager.shared.signOut()
     }
 }
