@@ -10,6 +10,9 @@ struct StationHeaderRow: View {
 
     var body: some View {
         HStack {
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .foregroundStyle(.white.opacity(0.85))
+                .font(.caption.weight(.semibold))
             HStack(spacing: 6) {
                 Text(station)
                     .font(.subheadline)
@@ -31,9 +34,6 @@ struct StationHeaderRow: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                .foregroundStyle(.white.opacity(0.85))
-                .font(.caption.weight(.semibold))
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
