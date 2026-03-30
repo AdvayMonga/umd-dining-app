@@ -8,7 +8,7 @@ enum FeedRow: Identifiable {
     var id: String {
         switch self {
         case .stationHeader(let s, let h, _): return "header_\(s)_\(h)"
-        case .menuItem(let item): return "item_\(item.id)"
+        case .menuItem(let item): return "item_\(item.id)_\(item.station)_\(item.diningHallId)"
         case .seeMore: return "see_more"
         }
     }
