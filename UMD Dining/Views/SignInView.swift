@@ -3,6 +3,7 @@ import AuthenticationServices
 
 struct SignInView: View {
     @Environment(AuthManager.self) private var authManager
+    @AppStorage("isDarkMode") private var isDarkMode = true
 
     var body: some View {
         VStack(spacing: 40) {
@@ -39,7 +40,7 @@ struct SignInView: View {
                     print("Sign in failed: \(error.localizedDescription)")
                 }
             }
-            .signInWithAppleButtonStyle(.black)
+            .signInWithAppleButtonStyle(isDarkMode ? .white : .black)
             .frame(height: 50)
             .padding(.horizontal, 40)
 
@@ -47,9 +48,17 @@ struct SignInView: View {
                 authManager.continueAsGuest()
             } label: {
                 Text("Continue as Guest")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
+                    )
             }
+            .padding(.horizontal, 40)
 
             Spacer()
                 .frame(height: 40)

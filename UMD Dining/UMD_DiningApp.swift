@@ -4,12 +4,13 @@ import SwiftUI
 struct UMD_DiningApp: App {
     @State private var authManager = AuthManager.shared
     @State private var favoritesManager = FavoritesManager.shared
+    @AppStorage("isDarkMode") private var isDarkMode = true
 
     var body: some Scene {
         WindowGroup {
             if authManager.isSignedIn {
                 ContentView()
-                    .preferredColorScheme(.dark)
+                    .preferredColorScheme(isDarkMode ? .dark : .light)
                     .environment(authManager)
                     .environment(favoritesManager)
                     .task {
@@ -19,7 +20,7 @@ struct UMD_DiningApp: App {
                     }
             } else {
                 SignInView()
-                    .preferredColorScheme(.dark)
+                    .preferredColorScheme(isDarkMode ? .dark : .light)
                     .environment(authManager)
             }
         }

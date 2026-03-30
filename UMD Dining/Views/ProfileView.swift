@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @State private var preferences = UserPreferences.shared
     @Environment(FavoritesManager.self) private var favorites
+    @AppStorage("isDarkMode") private var isDarkMode = true
 
     private let allergenOptions = [
         "Contains dairy",
@@ -14,6 +15,10 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Appearance") {
+                    Toggle("Dark Mode", isOn: $isDarkMode)
+                }
+
                 Section("Dietary Preferences") {
                     Toggle("Vegetarian", isOn: $preferences.vegetarian)
                     Toggle("Vegan", isOn: $preferences.vegan)
