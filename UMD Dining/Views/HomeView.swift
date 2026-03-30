@@ -131,6 +131,21 @@ struct HomeView: View {
                                 isDiscovery: isDiscovery,
                                 onToggle: { viewModel.toggleStationExpansion(station: station, hallId: hallId, isDiscovery: isDiscovery) }
                             )
+                        case .seeMore:
+                            Button {
+                                viewModel.showDiscovery = true
+                            } label: {
+                                Text("See More Stations")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.umdRed)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.systemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                            }
+                            .buttonStyle(.plain)
                         case .menuItem(let item):
                             NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId))) {
                                 FoodItemRow(

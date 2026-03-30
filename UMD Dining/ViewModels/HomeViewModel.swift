@@ -3,11 +3,13 @@ import Foundation
 enum FeedRow: Identifiable {
     case stationHeader(station: String, diningHallId: String, isDiscovery: Bool)
     case menuItem(MenuItem)
+    case seeMore
 
     var id: String {
         switch self {
         case .stationHeader(let s, let h, _): return "header_\(s)_\(h)"
         case .menuItem(let item): return "item_\(item.id)"
+        case .seeMore: return "see_more"
         }
     }
 }
@@ -38,6 +40,7 @@ class HomeViewModel {
     // Expansion state — reset on each load
     private var userCollapsedStations: Set<String> = []
     private var userExpandedDiscovery: Set<String> = []
+    var showDiscovery: Bool = false
 
     var availableMealPeriods: [String] {
         let available = Set(allItems.map(\.mealPeriod))
@@ -159,15 +162,21 @@ class HomeViewModel {
             }
         }
 
-        for group in discoveryGroups {
-            let expanded = isStationExpanded(station: group.station, hallId: group.hallId, isDiscovery: true)
-            rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: true))
-            if expanded {
-                // 3 items from minimalFiltered — ignores dietary filters, backend already shuffled
-                minimalFiltered
-                    .filter { $0.station == group.station && $0.diningHallId == group.hallId }
-                    .prefix(3)
-                    .forEach { rows.append(.menuItem($0)) }
+        if !discoveryGroups.isEmpty {
+            if showDiscovery {
+                for group in discoveryGroups {
+                    let expanded = isStationExpanded(station: group.station, hallId: group.hallId, isDiscovery: true)
+                    rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: true))
+                    if expanded {
+                        // 3 items from minimalFiltered — ignores dietary filters, backend already shuffled
+                        minimalFiltered
+                            .filter { $0.station == group.station && $0.diningHallId == group.hallId }
+                            .prefix(3)
+                            .forEach { rows.append(.menuItem($0)) }
+                    }
+                }
+            } else {
+                rows.append(.seeMore)
             }
         }
 
@@ -210,6 +219,7 @@ class HomeViewModel {
         allItems = []
         userCollapsedStations = []
         userExpandedDiscovery = []
+        showDiscovery = false
 
         do {
             let userId = await AuthManager.shared.userId

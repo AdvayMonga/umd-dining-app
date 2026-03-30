@@ -55,59 +55,50 @@ struct NutritionDetailView: View {
     private func nutritionContent(_ info: NutritionInfo) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Calories hero
-                if let calories = nutritionValue("Calories", from: info.nutrition) {
-                    HStack {
-                        Spacer()
-                        VStack {
-                            Text(calories)
+                // Hero card — serving info left, calories right
+                let servingSize = nutritionValue("Serving Size", from: info.nutrition)
+                let servingsPerContainer = nutritionValue("Servings Per Container", from: info.nutrition)
+                let calories = nutritionValue("Calories", from: info.nutrition)
+
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let size = servingSize {
+                            Text("Serving Size: \(size)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let count = servingsPerContainer {
+                            Text("\(count) servings per container")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        if station != nil || diningHallName != nil {
+                            HStack(spacing: 4) {
+                                Image(systemName: "mappin.and.ellipse")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.umdRed)
+                                Text([station, diningHallName].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.umdRed)
+                            }
+                        }
+                    }
+                    Spacer()
+                    if let cal = calories {
+                        VStack(spacing: 0) {
+                            Text(cal)
                                 .font(.system(size: 48, weight: .bold))
                                 .foregroundStyle(Color.umdRed)
                             Text("Calories")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
-                        Spacer()
                     }
-                    .padding()
                 }
-
-                // Serving info
-                let servingSize = nutritionValue("Serving Size", from: info.nutrition)
-                let servingsPerContainer = nutritionValue("Servings Per Container", from: info.nutrition)
-                if servingSize != nil || servingsPerContainer != nil {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 2) {
-                            if let size = servingSize {
-                                Text("Serving Size: \(size)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let count = servingsPerContainer {
-                                Text(count)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .padding(.top, -12)
-                }
-
-                // Location
-                if station != nil || diningHallName != nil {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mappin.and.ellipse")
-                            .font(.caption)
-                            .foregroundStyle(Color.umdRed)
-                        Text([station, diningHallName].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, -8)
-                }
+                .padding()
+                .background(Color.umdRed.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal)
 
                 // Macros bar
                 macrosSection(info.nutrition)
