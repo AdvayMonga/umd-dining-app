@@ -77,7 +77,7 @@ struct HomeView: View {
                         .fontWeight(isSelected ? .bold : .regular)
                         .foregroundStyle(isSelected ? .primary : .secondary)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 50)
+                        .frame(height: 40)
                         .background(isSelected ? Color(.systemBackground) : Color(.systemGray5))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
