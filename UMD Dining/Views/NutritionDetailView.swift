@@ -65,10 +65,12 @@ struct NutritionDetailView: View {
                         if let size = servingSize {
                             Text("Serving Size: \(size)")
                                 .font(.subheadline)
+                                .fontWeight(.bold)
                                 .foregroundStyle(.secondary)
                         }
                         if let count = servingsPerContainer {
-                            Text("\(count) servings per container")
+                            let number = count.filter { $0.isNumber || $0 == "." }
+                            Text("\(number.isEmpty ? count : number) servings per container")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
