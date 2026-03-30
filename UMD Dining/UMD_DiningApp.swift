@@ -9,6 +9,7 @@ struct UMD_DiningApp: App {
         WindowGroup {
             if authManager.isSignedIn {
                 ContentView()
+                    .preferredColorScheme(.dark)
                     .environment(authManager)
                     .environment(favoritesManager)
                     .task {
@@ -18,6 +19,7 @@ struct UMD_DiningApp: App {
                     }
             } else {
                 SignInView()
+                    .preferredColorScheme(.dark)
                     .environment(authManager)
             }
         }

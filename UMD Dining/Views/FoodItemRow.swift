@@ -57,7 +57,8 @@ struct FoodItemRow: View {
         .padding(.horizontal, 16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+        .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
     }
 
     private func tagColor(for tag: String) -> Color {

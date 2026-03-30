@@ -53,7 +53,7 @@ class FavoritesManager {
 
     /// Fetch favorites from the API and update local cache
     func syncFromServer() async {
-        guard let userId = AuthManager.shared.userId else { return }
+        guard let userId = AuthManager.shared.userId, !AuthManager.shared.isGuest else { return }
         do {
             let serverFavs = try await DiningAPIService.shared.fetchFavorites(userId: userId)
             var merged: [String: String] = [:]
