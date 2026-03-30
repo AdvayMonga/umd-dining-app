@@ -271,6 +271,20 @@ def auth_apple():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.post('/api/auth/refresh')
+@require_auth
+@limiter.limit("10 per minute")
+def refresh_token():
+    try:
+        token = pyjwt.encode(
+            {'sub': g.user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
+            os.environ['SECRET_KEY'],
+            algorithm='HS256'
+        )
+        return jsonify({'success': True, 'token': token})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # --- Favorites (auth required) ---
 

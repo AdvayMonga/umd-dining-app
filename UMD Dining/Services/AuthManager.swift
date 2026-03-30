@@ -43,6 +43,24 @@ class AuthManager {
         UserDefaults.standard.set(true, forKey: guestKey)
     }
 
+    /// Refreshes the JWT if it expires within 7 days. Call on app launch.
+    func refreshTokenIfNeeded() async {
+        guard let token = jwtToken, !isGuest else { return }
+        // Decode the exp claim from the JWT payload (base64-encoded middle segment)
+        let parts = token.split(separator: ".")
+        guard parts.count == 3,
+              let payloadData = Data(base64URLEncoded: String(parts[1])),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+              let exp = json["exp"] as? TimeInterval else { return }
+        let expiryDate = Date(timeIntervalSince1970: exp)
+        guard expiryDate.timeIntervalSinceNow < 7 * 24 * 60 * 60 else { return } // more than 7 days left
+        // Refresh
+        if let newToken = try? await DiningAPIService.shared.refreshToken() {
+            jwtToken = newToken
+            saveToKeychain(newToken, key: jwtKey)
+        }
+    }
+
     func signOut() {
         userId = nil
         jwtToken = nil
@@ -84,5 +102,16 @@ class AuthManager {
             kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+private extension Data {
+    init?(base64URLEncoded string: String) {
+        var base64 = string
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        if remainder > 0 { base64 += String(repeating: "=", count: 4 - remainder) }
+        self.init(base64Encoded: base64)
     }
 }

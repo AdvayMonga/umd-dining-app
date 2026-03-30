@@ -142,6 +142,13 @@ actor DiningAPIService {
         return response.token
     }
 
+    func refreshToken() async throws -> String {
+        let token = await AuthManager.shared.jwtToken
+        let data = try await post("\(baseURL)/auth/refresh", body: [:], token: token)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: data)
+        return response.token
+    }
+
     // MARK: - Favorites (auth required)
 
     func fetchFavorites(userId: String) async throws -> [FavoriteItem] {

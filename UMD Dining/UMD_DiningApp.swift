@@ -12,6 +12,7 @@ struct UMD_DiningApp: App {
                     .environment(authManager)
                     .environment(favoritesManager)
                     .task {
+                        await authManager.refreshTokenIfNeeded()
                         await favoritesManager.syncFromServer()
                         await UserPreferences.shared.syncFromServer()
                     }
