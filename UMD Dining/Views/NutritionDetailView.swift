@@ -35,7 +35,7 @@ struct NutritionDetailView: View {
                 nutritionContent(info)
             }
         }
-        .navigationTitle(foodName)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -55,6 +55,14 @@ struct NutritionDetailView: View {
     private func nutritionContent(_ info: NutritionInfo) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // Food name — wraps for long names
+                Text(foodName)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
+
                 // Hero card — serving info left, calories right
                 let servingSize = nutritionValue("Serving Size", from: info.nutrition)
                 let servingsPerContainer = nutritionValue("Servings Per Container", from: info.nutrition)
@@ -86,7 +94,7 @@ struct NutritionDetailView: View {
                         } else {
                             Text("Unavailable today")
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.umdRed)
                         }
                     }
                     Spacer()
@@ -106,11 +114,19 @@ struct NutritionDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal)
 
-                // Macros bar
-                macrosSection(info.nutrition)
+                if info.nutrition.isEmpty || calories == nil {
+                    Text("Nutrition unavailable")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                } else {
+                    // Macros bar
+                    macrosSection(info.nutrition)
 
-                // Full nutrition table
-                nutritionTable(info.nutrition)
+                    // Full nutrition table
+                    nutritionTable(info.nutrition)
+                }
 
                 // Allergens
                 if !info.allergens.isEmpty {
@@ -240,14 +256,20 @@ struct NutritionDetailView: View {
     }
 
     private func nutritionValue(_ key: String, from nutrition: [String: String]) -> String? {
-        if let v = nutrition[key] { return v }
-        let normalized = key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        for (k, v) in nutrition {
-            if k.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == normalized {
-                return v
-            }
+        let raw: String?
+        if let v = nutrition[key] {
+            raw = v
+        } else {
+            let normalized = key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            raw = nutrition.first(where: {
+                $0.key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == normalized
+            })?.value
         }
-        return nil
+        guard let value = raw else { return nil }
+        // Hide zero values like "0g", "0mg", "0.0mg"
+        let digits = value.filter { $0.isNumber || $0 == "." }
+        if let num = Double(digits), num == 0 { return nil }
+        return value
     }
 
     private func normalizedKey(_ key: String) -> String {
