@@ -46,7 +46,7 @@ struct SignInView: View {
             .padding(.horizontal, 40)
 
             Button {
-                authManager.continueAsGuest()
+                Task { await authManager.continueAsGuest() }
             } label: {
                 Text("Continue as Guest")
                     .font(.subheadline)

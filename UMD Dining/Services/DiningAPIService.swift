@@ -86,6 +86,18 @@ private struct AuthResponse: Decodable {
     let token: String
 }
 
+private struct GuestAuthResponse: Decodable {
+    let success: Bool
+    let userId: String
+    let token: String
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case userId = "user_id"
+        case token
+    }
+}
+
 actor DiningAPIService {
     static let shared = DiningAPIService()
 
@@ -134,6 +146,20 @@ actor DiningAPIService {
     }
 
     // MARK: - Auth
+
+    func registerGuest() async throws -> (userId: String, token: String) {
+        let data = try await post("\(baseURL)/auth/guest", body: [:])
+        let response = try JSONDecoder().decode(GuestAuthResponse.self, from: data)
+        return (response.userId, response.token)
+    }
+
+    func upgradeGuestToApple(appleUserId: String) async throws -> String {
+        let token = await AuthManager.shared.jwtToken
+        let body = ["apple_user_id": appleUserId]
+        let data = try await post("\(baseURL)/auth/upgrade", body: body, token: token)
+        let response = try JSONDecoder().decode(AuthResponse.self, from: data)
+        return response.token
+    }
 
     func registerAppleUser(userId: String) async throws -> String {
         let body = ["apple_user_id": userId]
@@ -282,6 +308,8 @@ actor DiningAPIService {
 
     @MainActor
     private func handleUnauthorized() {
-        AuthManager.shared.signOut()
+        if !AuthManager.shared.isGuest {
+            AuthManager.shared.signOut()
+        }
     }
 }

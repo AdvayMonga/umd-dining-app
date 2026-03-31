@@ -42,6 +42,10 @@ class HomeViewModel {
     private var userExpandedDiscovery: Set<String> = []
     var showDiscovery: Bool = false
 
+    // Snapshot of favorites at load time — keeps feed order stable until refresh
+    private var loadedFavRecNums: Set<String> = []
+    private var loadedFavStations: Set<String> = []
+
     var availableMealPeriods: [String] {
         let available = Set(allItems.map(\.mealPeriod))
         let weekday = Calendar.current.component(.weekday, from: selectedDate)
@@ -84,10 +88,10 @@ class HomeViewModel {
         }
 
         // --- Build 20-item selected pool ---
-        let foodFavs    = filtered.filter { FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let nonFoodFavs = filtered.filter { !FavoritesManager.shared.isFavorite(recNum: $0.recNum) }
-        let stationFavs = nonFoodFavs.filter { FavoritesManager.shared.isFavoriteStation($0.station) }
-        let rest        = nonFoodFavs.filter { !FavoritesManager.shared.isFavoriteStation($0.station) }
+        let foodFavs    = filtered.filter { loadedFavRecNums.contains($0.recNum) }
+        let nonFoodFavs = filtered.filter { !loadedFavRecNums.contains($0.recNum) }
+        let stationFavs = nonFoodFavs.filter { loadedFavStations.contains($0.station) }
+        let rest        = nonFoodFavs.filter { !loadedFavStations.contains($0.station) }
         let scored      = rest.filter { $0.tag != nil }
         let unscored    = rest.filter { $0.tag == nil }
 
@@ -118,8 +122,8 @@ class HomeViewModel {
             }
         }
         let sortedRecommended = recommendedGroups.sorted {
-            FavoritesManager.shared.isFavoriteStation($0.station)
-            && !FavoritesManager.shared.isFavoriteStation($1.station)
+            loadedFavStations.contains($0.station)
+            && !loadedFavStations.contains($1.station)
         }
 
         // --- Build discovery groups (in minimalFiltered but not in recommended) ---
@@ -138,8 +142,8 @@ class HomeViewModel {
             else { return nil }
             return (item.station, item.diningHallId)
         }.sorted {
-            let aFav = FavoritesManager.shared.isFavoriteStation($0.station)
-            let bFav = FavoritesManager.shared.isFavoriteStation($1.station)
+            let aFav = loadedFavStations.contains($0.station)
+            let bFav = loadedFavStations.contains($1.station)
             if aFav != bFav { return aFav }
             return $0.station < $1.station
         }
@@ -152,7 +156,7 @@ class HomeViewModel {
             rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: false))
             if expanded {
                 let items: [MenuItem]
-                if FavoritesManager.shared.isFavoriteStation(group.station) {
+                if loadedFavStations.contains(group.station) {
                     // Favorited: show ALL items from this station (no cap)
                     items = filtered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
                 } else {
@@ -220,6 +224,10 @@ class HomeViewModel {
         userCollapsedStations = []
         userExpandedDiscovery = []
         showDiscovery = false
+
+        // Snapshot favorites at load time so feed order stays stable until next refresh
+        loadedFavRecNums = Set(FavoritesManager.shared.favoriteFoods.keys)
+        loadedFavStations = FavoritesManager.shared.favoriteStations
 
         do {
             let userId = await AuthManager.shared.userId

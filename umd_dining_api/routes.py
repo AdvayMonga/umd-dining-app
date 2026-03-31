@@ -273,6 +273,29 @@ def embed_missing():
 
 # --- Auth ---
 
+@app.post('/api/auth/guest')
+@limiter.limit("10 per minute")
+def auth_guest():
+    try:
+        import uuid
+        guest_id = f"guest_{uuid.uuid4().hex}"
+
+        db.users.insert_one({
+            'user_id': guest_id,
+            'is_guest': True,
+            'created_at': datetime.now().isoformat()
+        })
+
+        token = pyjwt.encode(
+            {'sub': guest_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
+            os.environ['SECRET_KEY'],
+            algorithm='HS256'
+        )
+
+        return jsonify({'success': True, 'user_id': guest_id, 'token': token})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.post('/api/auth/apple')
 @limiter.limit("10 per minute")
 def auth_apple():
@@ -287,6 +310,46 @@ def auth_apple():
             {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now().isoformat()}},
             upsert=True
         )
+
+        token = pyjwt.encode(
+            {'sub': apple_user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
+            os.environ['SECRET_KEY'],
+            algorithm='HS256'
+        )
+
+        return jsonify({'success': True, 'user_id': apple_user_id, 'token': token})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/auth/upgrade')
+@require_auth
+@limiter.limit("10 per minute")
+def upgrade_guest():
+    """Upgrade a guest account to an Apple account, migrating all data."""
+    try:
+        data = request.get_json()
+        apple_user_id = data.get('apple_user_id')
+        if not apple_user_id:
+            return jsonify({'success': False, 'error': 'apple_user_id required'}), 400
+
+        guest_id = g.user_id
+        if not guest_id.startswith('guest_'):
+            return jsonify({'success': False, 'error': 'not a guest account'}), 400
+
+        # Create or find the Apple user
+        db.users.update_one(
+            {'apple_user_id': apple_user_id},
+            {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now().isoformat()}},
+            upsert=True
+        )
+
+        # Migrate favorites, station_favorites, and preferences from guest to Apple user
+        db.favorites.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
+        db.station_favorites.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
+        db.preferences.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
+
+        # Delete the guest user record
+        db.users.delete_one({'user_id': guest_id})
 
         token = pyjwt.encode(
             {'sub': apple_user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},

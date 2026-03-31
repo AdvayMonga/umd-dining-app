@@ -42,13 +42,41 @@ class AuthManager {
         }
     }
 
-    func continueAsGuest() {
-        let guestId = "guest_\(UUID().uuidString)"
-        userId = guestId
-        isGuest = true
-        jwtToken = nil
-        saveToKeychain(guestId, key: keychainKey)
-        UserDefaults.standard.set(true, forKey: guestKey)
+    func continueAsGuest() async {
+        do {
+            let result = try await DiningAPIService.shared.registerGuest()
+            userId = result.userId
+            isGuest = true
+            jwtToken = result.token
+            saveToKeychain(result.userId, key: keychainKey)
+            saveToKeychain(result.token, key: jwtKey)
+            UserDefaults.standard.set(true, forKey: guestKey)
+        } catch {
+            // Fallback: work offline with local-only guest
+            let guestId = "guest_\(UUID().uuidString)"
+            userId = guestId
+            isGuest = true
+            jwtToken = nil
+            saveToKeychain(guestId, key: keychainKey)
+            UserDefaults.standard.set(true, forKey: guestKey)
+        }
+    }
+
+    /// Upgrade a guest account to Apple sign-in, migrating all server-side data.
+    func upgradeToApple(credential: ASAuthorizationAppleIDCredential) async {
+        let appleUserId = credential.user
+        do {
+            let token = try await DiningAPIService.shared.upgradeGuestToApple(appleUserId: appleUserId)
+            userId = appleUserId
+            isGuest = false
+            jwtToken = token
+            saveToKeychain(appleUserId, key: keychainKey)
+            saveToKeychain(token, key: jwtKey)
+            UserDefaults.standard.set(false, forKey: guestKey)
+        } catch {
+            // Fallback: do a normal sign-in (data won't migrate but user is signed in)
+            await handleSignIn(credential: credential)
+        }
     }
 
     /// Refreshes the JWT if it expires within 7 days. Call on app launch.

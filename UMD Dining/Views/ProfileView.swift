@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 struct ProfileView: View {
@@ -48,6 +49,20 @@ struct ProfileView: View {
                         ForEach(Array(favorites.favoriteFoods.values).sorted(), id: \.self) { name in
                             Text(name)
                         }
+                    }
+                }
+
+                if AuthManager.shared.isGuest {
+                    Section("Account") {
+                        SignInWithAppleButton(.signIn) { request in
+                            request.requestedScopes = []
+                        } onCompletion: { result in
+                            if case .success(let authorization) = result,
+                               let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                                Task { await AuthManager.shared.upgradeToApple(credential: credential) }
+                            }
+                        }
+                        .frame(height: 44)
                     }
                 }
 
