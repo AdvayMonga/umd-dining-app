@@ -7,6 +7,7 @@ struct ProfileView: View {
     @AppStorage("isDarkMode") private var isDarkMode = true
     @State private var isUpgrading = false
     @State private var upgradeError: String?
+    @State private var showSignOutConfirmation = false
 
     private let allergenOptions = [
         "Contains dairy",
@@ -66,8 +67,10 @@ struct ProfileView: View {
                         Text("No favorite foods yet")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(Array(favorites.favoriteFoods.values).sorted(), id: \.self) { name in
-                            Text(name)
+                        ForEach(favorites.favoriteFoods.sorted(by: { $0.value < $1.value }), id: \.key) { recNum, name in
+                            NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name)) {
+                                Text(name)
+                            }
                         }
                     }
                 }

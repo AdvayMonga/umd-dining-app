@@ -20,7 +20,13 @@ class HomeViewModel {
     var isLoading = false
     var errorMessage: String?
     var selectedMealPeriod: String = "Lunch"
-    var selectedDate: Date = .now
+    var selectedDate: Date = {
+        let hour = Calendar.current.component(.hour, from: .now)
+        if hour >= 22 {
+            return Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
+        }
+        return .now
+    }()
     var selectedHallIds: Set<String> = ["19", "51", "16"]
 
     let diningHallNames: [String: String] = [
@@ -32,9 +38,10 @@ class HomeViewModel {
     let allHallIds = ["19", "51", "16"]
     let mealPeriods = ["Breakfast", "Brunch", "Lunch", "Dinner"]
 
-    // Temporary session-only filters (not saved or synced)
+    // Temporary session-only filters — defaults loaded from profile prefs
     var filterVegetarian: Bool = false
     var filterVegan: Bool = false
+    var filterHighProtein: Bool = false
     var filterAllergens: Set<String> = []
 
     // Expansion state — reset on each load
@@ -190,6 +197,12 @@ class HomeViewModel {
     private func sessionShouldHide(item: MenuItem) -> Bool {
         if filterVegan && !item.dietaryIcons.contains("vegan") { return true }
         if filterVegetarian && !item.dietaryIcons.contains("vegetarian") { return true }
+        if filterHighProtein {
+            let proteinStr = item.nutrition?["Protein"] ?? item.nutrition?["Protein."] ?? ""
+            let digits = proteinStr.filter { $0.isNumber || $0 == "." }
+            let grams = Double(digits) ?? 0
+            if grams < 20 { return true }
+        }
         for allergen in filterAllergens {
             if item.dietaryIcons.contains(allergen) { return true }
         }
@@ -224,6 +237,12 @@ class HomeViewModel {
         userCollapsedStations = []
         userExpandedDiscovery = []
         showDiscovery = false
+
+        // Sync temp filters from saved profile preferences
+        let prefs = UserPreferences.shared
+        filterVegetarian = prefs.vegetarian
+        filterVegan = prefs.vegan
+        filterAllergens = prefs.allergens
 
         // Snapshot favorites at load time so feed order stays stable until next refresh
         loadedFavRecNums = Set(FavoritesManager.shared.favoriteFoods.keys)

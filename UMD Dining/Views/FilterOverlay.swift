@@ -7,6 +7,7 @@ struct FilterOverlay: View {
 
     @Binding var filterVegetarian: Bool
     @Binding var filterVegan: Bool
+    @Binding var filterHighProtein: Bool
     @Binding var filterAllergens: Set<String>
 
     @Environment(\.dismiss) private var dismiss
@@ -44,6 +45,7 @@ struct FilterOverlay: View {
                 Section("Dietary Preferences") {
                     Toggle("Vegetarian", isOn: $filterVegetarian)
                     Toggle("Vegan", isOn: $filterVegan)
+                    Toggle("High Protein (20g+)", isOn: $filterHighProtein)
                 }
 
                 Section("Allergens to Avoid") {
@@ -80,6 +82,7 @@ struct FilterOverlay: View {
         allHallIds: ["19", "51", "16"],
         filterVegetarian: .constant(false),
         filterVegan: .constant(false),
+        filterHighProtein: .constant(false),
         filterAllergens: .constant([])
     )
 }

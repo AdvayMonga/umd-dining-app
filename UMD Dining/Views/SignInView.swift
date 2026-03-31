@@ -61,7 +61,7 @@ struct SignInView: View {
                 } label: {
                     Text("Continue as Guest")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .overlay(

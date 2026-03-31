@@ -56,6 +56,7 @@ struct HomeView: View {
                 allHallIds: viewModel.allHallIds,
                 filterVegetarian: $viewModel.filterVegetarian,
                 filterVegan: $viewModel.filterVegan,
+                filterHighProtein: $viewModel.filterHighProtein,
                 filterAllergens: $viewModel.filterAllergens
             )
             .presentationDetents([.large])
