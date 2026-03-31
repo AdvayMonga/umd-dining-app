@@ -18,4 +18,14 @@ struct SearchResult: Decodable, Identifiable, Sendable {
         case nutrition
         case nutritionFetched = "nutrition_fetched"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        recNum = try container.decode(String.self, forKey: .recNum)
+        allergens = try container.decodeIfPresent(String.self, forKey: .allergens) ?? ""
+        ingredients = try container.decodeIfPresent(String.self, forKey: .ingredients) ?? ""
+        nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition) ?? [:]
+        nutritionFetched = try container.decodeIfPresent(Bool.self, forKey: .nutritionFetched) ?? false
+    }
 }

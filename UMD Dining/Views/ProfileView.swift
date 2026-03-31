@@ -5,6 +5,8 @@ struct ProfileView: View {
     @State private var preferences = UserPreferences.shared
     @Environment(FavoritesManager.self) private var favorites
     @AppStorage("isDarkMode") private var isDarkMode = true
+    @State private var isUpgrading = false
+    @State private var upgradeError: String?
 
     private let allergenOptions = [
         "Contains dairy",
@@ -75,12 +77,22 @@ struct ProfileView: View {
                         SignInWithAppleButton(.signIn) { request in
                             request.requestedScopes = []
                         } onCompletion: { result in
-                            if case .success(let authorization) = result,
-                               let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                                Task { await AuthManager.shared.upgradeToApple(credential: credential) }
+                            switch result {
+                            case .success(let authorization):
+                                if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                                    isUpgrading = true
+                                    Task {
+                                        await AuthManager.shared.upgradeToApple(credential: credential)
+                                        isUpgrading = false
+                                    }
+                                }
+                            case .failure(let error):
+                                upgradeError = "Sign in failed. Please try again."
+                                print("Upgrade failed: \(error.localizedDescription)")
                             }
                         }
                         .frame(height: 44)
+                        .disabled(isUpgrading)
                     }
                 }
 
@@ -91,6 +103,23 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Profile")
+            .overlay {
+                if isUpgrading {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.5)
+                }
+            }
+            .alert("Error", isPresented: Binding(
+                get: { upgradeError != nil },
+                set: { if !$0 { upgradeError = nil } }
+            )) {
+                Button("OK") { upgradeError = nil }
+            } message: {
+                Text(upgradeError ?? "")
+            }
         }
     }
 }

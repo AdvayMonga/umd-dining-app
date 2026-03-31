@@ -12,6 +12,16 @@ struct SearchOverlay: View {
                     Spacer()
                     ProgressView("Searching...")
                     Spacer()
+                } else if let error = viewModel.errorMessage {
+                    Spacer()
+                    ContentUnavailableView {
+                        Label("Search Failed", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(error)
+                    } actions: {
+                        Button("Try Again") { viewModel.search() }
+                    }
+                    Spacer()
                 } else if viewModel.hasSearched && viewModel.results.isEmpty {
                     Spacer()
                     ContentUnavailableView.search(text: viewModel.query)

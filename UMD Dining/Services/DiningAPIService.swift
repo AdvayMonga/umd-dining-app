@@ -243,7 +243,7 @@ actor DiningAPIService {
     func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String], cuisinePrefs: [String] = []) async throws {
         let token = await AuthManager.shared.jwtToken
         guard let url = URL(string: "\(baseURL)/preferences") else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let t = token {
@@ -267,7 +267,7 @@ actor DiningAPIService {
 
     private func fetch(_ urlString: String, token: String? = nil) async throws -> Data {
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, timeoutInterval: 10)
         if let t = token {
             request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
         }
@@ -289,7 +289,7 @@ actor DiningAPIService {
 
     private func post(_ urlString: String, body: [String: String], token: String? = nil) async throws -> Data {
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let t = token {
@@ -306,7 +306,7 @@ actor DiningAPIService {
 
     private func delete(_ urlString: String, body: [String: String], token: String? = nil) async throws -> Data {
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, timeoutInterval: 10)
         request.httpMethod = "DELETE"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let t = token {
@@ -322,8 +322,12 @@ actor DiningAPIService {
     }
 
     @MainActor
-    private func handleUnauthorized() {
-        if !AuthManager.shared.isGuest {
+    private func handleUnauthorized() async {
+        if AuthManager.shared.isGuest { return }
+        // Try refreshing the token before signing out
+        if let newToken = try? await refreshToken() {
+            AuthManager.shared.updateToken(newToken)
+        } else {
             AuthManager.shared.signOut()
         }
     }

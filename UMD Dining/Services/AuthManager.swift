@@ -97,6 +97,11 @@ class AuthManager {
         }
     }
 
+    func updateToken(_ token: String) {
+        jwtToken = token
+        saveToKeychain(token, key: jwtKey)
+    }
+
     func checkAppleCredentialState() async {
         guard let userId, !isGuest else { return }
         let provider = ASAuthorizationAppleIDProvider()

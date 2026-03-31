@@ -14,4 +14,13 @@ struct NutritionInfo: Decodable, Sendable {
         case ingredients
         case nutrition
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        recNum = try container.decode(String.self, forKey: .recNum)
+        allergens = try container.decodeIfPresent(String.self, forKey: .allergens) ?? ""
+        ingredients = try container.decodeIfPresent(String.self, forKey: .ingredients) ?? ""
+        nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition) ?? [:]
+    }
 }
