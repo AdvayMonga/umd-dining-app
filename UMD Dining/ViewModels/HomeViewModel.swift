@@ -213,6 +213,10 @@ class HomeViewModel {
         diningHallNames[id] ?? "Unknown"
     }
 
+    func itemsForStation(station: String, hallId: String) -> [MenuItem] {
+        allItems.filter { $0.station == station && $0.diningHallId == hallId }
+    }
+
     private var dateString: String {
         let f = DateFormatter()
         f.dateFormat = "M/d/yyyy"

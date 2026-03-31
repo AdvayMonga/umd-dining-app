@@ -101,7 +101,19 @@ struct ProfileView: View {
 
                 Section {
                     Button("Sign Out", role: .destructive) {
-                        AuthManager.shared.signOut()
+                        showSignOutConfirmation = true
+                    }
+                    .confirmationDialog(
+                        "Are you sure you want to sign out?",
+                        isPresented: $showSignOutConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Sign Out & Delete Data", role: .destructive) {
+                            AuthManager.shared.signOut()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Your favorites and preferences will be lost.")
                     }
                 }
             }

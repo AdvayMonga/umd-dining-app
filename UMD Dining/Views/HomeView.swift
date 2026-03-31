@@ -37,18 +37,20 @@ struct HomeView: View {
 
             Button { showSearch = true } label: {
                 Image(systemName: "magnifyingglass")
-                    .font(.title3)
+                    .font(.title2)
                     .foregroundStyle(Color.umdRed)
+                    .frame(width: 44, height: 44)
             }
 
             Button { showFilter = true } label: {
                 Image(systemName: "line.3.horizontal.decrease")
-                    .font(.title3)
+                    .font(.title2)
                     .foregroundStyle(Color.umdRed)
+                    .frame(width: 44, height: 44)
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
         .sheet(isPresented: $showFilter) {
             FilterOverlay(
                 selectedHallIds: $viewModel.selectedHallIds,
@@ -128,8 +130,12 @@ struct HomeView: View {
                             StationHeaderRow(
                                 station: station,
                                 diningHallName: viewModel.diningHallName(for: hallId),
+                                diningHallId: hallId,
                                 isExpanded: viewModel.isStationExpanded(station: station, hallId: hallId, isDiscovery: isDiscovery),
                                 isDiscovery: isDiscovery,
+                                items: viewModel.itemsForStation(station: station, hallId: hallId),
+                                selectedDate: viewModel.selectedDate,
+                                selectedMealPeriod: viewModel.selectedMealPeriod,
                                 onToggle: { viewModel.toggleStationExpansion(station: station, hallId: hallId, isDiscovery: isDiscovery) }
                             )
                         case .seeMore:
