@@ -42,23 +42,24 @@ struct SignInView: View {
             }
             .signInWithAppleButtonStyle(isDarkMode ? .white : .black)
             .frame(height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .padding(.horizontal, 40)
 
             Button {
                 authManager.continueAsGuest()
             } label: {
                 Text("Continue as Guest")
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.secondary.opacity(0.4), lineWidth: 1)
                     )
             }
             .padding(.horizontal, 40)
+            .padding(.top, -24)
 
             Spacer()
                 .frame(height: 40)

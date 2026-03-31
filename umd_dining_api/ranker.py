@@ -10,6 +10,7 @@ Tag is assigned based on the highest-priority signal that fired.
 """
 
 import random
+from embeddings import cosine_similarity, compute_centroid
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +56,7 @@ def rank_items(
     user_prefs,
     popular_rec_nums,
     date_seed,
+    fav_embeddings=None,
 ):
     """
     Score, tag, and sort menu items for the feed.
@@ -76,6 +78,7 @@ def rank_items(
     """
     is_vegetarian = user_prefs.get('vegetarian', False)
     is_vegan = user_prefs.get('vegan', False)
+    fav_centroid = compute_centroid(fav_embeddings) if fav_embeddings else None
 
     scored = []    # (score, tag, item_dict)
     untagged = []  # item_dicts with score == 0
@@ -126,6 +129,11 @@ def rank_items(
                 score += 15
                 signals.add('protein_ratio')
 
+            if fav_centroid is not None:
+                item_embedding = food.get('embedding')
+                if item_embedding and cosine_similarity(fav_centroid, item_embedding) >= 0.82:
+                    score += 25
+                    signals.add('similar_to_favorites')
 
         # Drop untagged sides
         if is_side and score == 0:
@@ -138,6 +146,8 @@ def rank_items(
             tag = 'Favorite Station'
         elif 'trending' in signals:
             tag = 'Trending'
+        elif 'similar_to_favorites' in signals:
+            tag = 'Similar to Favorites'
         elif 'high_protein' in signals or 'protein_ratio' in signals:
             tag = 'High Protein'
         else:

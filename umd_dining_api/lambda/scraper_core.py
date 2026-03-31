@@ -2,6 +2,9 @@
 
 import re
 import time
+import json
+import os
+import boto3
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -161,6 +164,20 @@ def get_nutrition_info(rec_num):
     return nutrition
 
 
+def _publish_to_embedding_queue(rec_num: str) -> None:
+    """Publish a rec_num to SQS for async embedding. No-op if queue URL not configured."""
+    queue_url = os.environ.get('EMBEDDINGS_QUEUE_URL')
+    if not queue_url:
+        return
+    try:
+        boto3.client('sqs').send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps({'rec_num': rec_num}),
+        )
+    except Exception as e:
+        print(f"Failed to publish {rec_num} to embedding queue: {e}")
+
+
 def fetch_and_cache_nutrition(db, rec_num):
     food = db.foods.find_one({"rec_num": rec_num})
     if food and food.get("nutrition_fetched"):
@@ -180,6 +197,8 @@ def fetch_and_cache_nutrition(db, rec_num):
         {"$set": update},
         upsert=True
     )
+
+    _publish_to_embedding_queue(rec_num)
 
     return db.foods.find_one({"rec_num": rec_num})
 

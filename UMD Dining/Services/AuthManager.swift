@@ -14,8 +14,16 @@ class AuthManager {
     private let keychainKey = "com.umddining.appleUserId"
     private let jwtKey = "com.umddining.jwtToken"
     private let guestKey = "com.umddining.isGuest"
+    private let hasLaunchedKey = "com.umddining.hasLaunched"
 
     init() {
+        // Keychain persists across app deletes — clear it on fresh install
+        if !UserDefaults.standard.bool(forKey: hasLaunchedKey) {
+            deleteFromKeychain(key: keychainKey)
+            deleteFromKeychain(key: jwtKey)
+            UserDefaults.standard.removeObject(forKey: guestKey)
+            UserDefaults.standard.set(true, forKey: hasLaunchedKey)
+        }
         userId = loadFromKeychain(key: keychainKey)
         jwtToken = loadFromKeychain(key: jwtKey)
         isGuest = UserDefaults.standard.bool(forKey: guestKey)

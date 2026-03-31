@@ -114,6 +114,7 @@ def get_ranked_menu():
         fav_rec_nums = set()
         fav_stations = set()
         user_prefs = {}
+        fav_embeddings = []
         if user_id:
             for fav in db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0}):
                 fav_rec_nums.add(fav['rec_num'])
@@ -122,6 +123,14 @@ def get_ranked_menu():
             prefs_doc = db.preferences.find_one({'user_id': user_id}, {'_id': 0})
             if prefs_doc:
                 user_prefs = prefs_doc
+
+            # Fetch embeddings for all favorited foods (not just today's menu — past favs still encode taste)
+            if fav_rec_nums:
+                fav_food_docs = db.foods.find(
+                    {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
+                    {'embedding': 1, '_id': 0}
+                )
+                fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
 
         pipeline = [
             {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
@@ -138,6 +147,7 @@ def get_ranked_menu():
             user_prefs=user_prefs,
             popular_rec_nums=popular_rec_nums,
             date_seed=date,
+            fav_embeddings=fav_embeddings,
         )
 
         return jsonify({'success': True, 'count': len(result), 'data': result})
@@ -242,6 +252,23 @@ def scrape():
 def scrape_week():
     threading.Thread(target=scrape_full_week, daemon=False).start()
     return jsonify({'success': True, 'status': 'scrape started'})
+
+def _run_embed_missing():
+    from embeddings import generate_and_store_embedding
+    import time
+    cursor = db.foods.find({'embedding': {'$exists': False}}, {'_id': 0})
+    for food in cursor:
+        try:
+            generate_and_store_embedding(db, food['rec_num'], food)
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"Embedding failed for {food['rec_num']}: {e}")
+
+@app.post('/api/embed-missing')
+@_require_admin
+def embed_missing():
+    threading.Thread(target=_run_embed_missing, daemon=False).start()
+    return jsonify({'success': True, 'status': 'embedding started in background'})
 
 
 # --- Auth ---
