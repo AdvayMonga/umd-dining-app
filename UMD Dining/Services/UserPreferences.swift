@@ -14,16 +14,21 @@ class UserPreferences {
     var allergens: Set<String> {
         didSet { saveLocally(); syncToServer() }
     }
+    var cuisinePrefs: [String] {
+        didSet { saveLocally(); syncToServer() }
+    }
 
     private let vegetarianKey = "pref_vegetarian"
     private let veganKey = "pref_vegan"
     private let allergensKey = "pref_allergens"
+    private let cuisinePrefsKey = "pref_cuisine_prefs"
 
     init() {
         self.vegetarian = UserDefaults.standard.bool(forKey: "pref_vegetarian")
         self.vegan = UserDefaults.standard.bool(forKey: "pref_vegan")
         let stored = UserDefaults.standard.stringArray(forKey: "pref_allergens") ?? []
         self.allergens = Set(stored)
+        self.cuisinePrefs = UserDefaults.standard.stringArray(forKey: "pref_cuisine_prefs") ?? []
     }
 
     func shouldHide(item: MenuItem) -> Bool {
@@ -49,6 +54,7 @@ class UserPreferences {
             vegetarian = prefs.vegetarian
             vegan = prefs.vegan
             allergens = Set(prefs.allergens)
+            cuisinePrefs = prefs.cuisinePrefs
         } catch {
             // Keep local values if API fails
         }
@@ -58,6 +64,7 @@ class UserPreferences {
         UserDefaults.standard.set(vegetarian, forKey: vegetarianKey)
         UserDefaults.standard.set(vegan, forKey: veganKey)
         UserDefaults.standard.set(Array(allergens), forKey: allergensKey)
+        UserDefaults.standard.set(cuisinePrefs, forKey: cuisinePrefsKey)
     }
 
     private func syncToServer() {
@@ -67,7 +74,8 @@ class UserPreferences {
                 userId: userId,
                 vegetarian: vegetarian,
                 vegan: vegan,
-                allergens: Array(allergens)
+                allergens: Array(allergens),
+                cuisinePrefs: cuisinePrefs
             )
         }
     }

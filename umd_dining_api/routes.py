@@ -132,6 +132,16 @@ def get_ranked_menu():
                 )
                 fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
 
+            # Cold-start: if <3 real favorites, fall back to cuisine preference embeddings
+            if len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
+                cuisine_docs = db.cuisine_embeddings.find(
+                    {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
+                    {'embedding': 1, '_id': 0}
+                )
+                cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
+                if cuisine_embs:
+                    fav_embeddings = cuisine_embs
+
         pipeline = [
             {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
             {'$sort': {'count': -1}},
@@ -269,6 +279,45 @@ def _run_embed_missing():
 def embed_missing():
     threading.Thread(target=_run_embed_missing, daemon=False).start()
     return jsonify({'success': True, 'status': 'embedding started in background'})
+
+@app.post('/api/cuisine-embeddings/generate')
+@_require_admin
+def generate_cuisine_embeddings():
+    """One-time: generate and store embedding centroids for each cuisine category."""
+    from embeddings import generate_embedding, compute_centroid
+    import time
+
+    CUISINES = {
+        'comfort': ['Cheeseburger', 'Mac and Cheese', 'Grilled Cheese Sandwich', 'French Fries', 'Chicken Tenders'],
+        'asian': ['Teriyaki Chicken', 'Vegetable Stir Fry', 'Fried Rice', 'Lo Mein Noodles', 'Orange Chicken'],
+        'mexican': ['Chicken Burrito', 'Beef Tacos', 'Cheese Quesadilla', 'Spanish Rice and Beans', 'Nachos'],
+        'italian': ['Spaghetti Marinara', 'Cheese Pizza', 'Caesar Salad', 'Chicken Parmesan', 'Penne Alfredo'],
+        'indian': ['Chicken Tikka Masala', 'Butter Chicken Curry', 'Vegetable Biryani', 'Naan Bread', 'Chana Masala'],
+        'southern': ['Fried Chicken', 'Cornbread', 'Collard Greens', 'Mashed Potatoes and Gravy', 'BBQ Pulled Pork'],
+        'breakfast': ['Pancakes with Syrup', 'Scrambled Eggs and Bacon', 'French Toast', 'Breakfast Burrito', 'Waffles'],
+    }
+
+    results = {}
+    for cuisine, foods in CUISINES.items():
+        embeddings = []
+        for food_name in foods:
+            try:
+                emb = generate_embedding(food_name)
+                embeddings.append(emb)
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"Failed to embed {food_name}: {e}")
+
+        if embeddings:
+            centroid = compute_centroid(embeddings)
+            db.cuisine_embeddings.update_one(
+                {'cuisine': cuisine},
+                {'$set': {'cuisine': cuisine, 'embedding': centroid}},
+                upsert=True
+            )
+            results[cuisine] = len(embeddings)
+
+    return jsonify({'success': True, 'generated': results})
 
 
 # --- Auth ---
@@ -473,7 +522,7 @@ def get_preferences():
     try:
         prefs = db.preferences.find_one({'user_id': g.user_id}, {'_id': 0})
         if not prefs:
-            prefs = {'user_id': g.user_id, 'vegetarian': False, 'vegan': False, 'allergens': []}
+            prefs = {'user_id': g.user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
         return jsonify({'success': True, 'data': prefs})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -490,6 +539,7 @@ def update_preferences():
                 'vegetarian': data.get('vegetarian', False),
                 'vegan': data.get('vegan', False),
                 'allergens': data.get('allergens', []),
+                'cuisine_prefs': data.get('cuisine_prefs', []),
             }},
             upsert=True
         )

@@ -74,6 +74,20 @@ struct UserPreferencesData: Decodable, Sendable {
     let vegetarian: Bool
     let vegan: Bool
     let allergens: [String]
+    let cuisinePrefs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case vegetarian, vegan, allergens
+        case cuisinePrefs = "cuisine_prefs"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vegetarian = try container.decode(Bool.self, forKey: .vegetarian)
+        vegan = try container.decode(Bool.self, forKey: .vegan)
+        allergens = try container.decode([String].self, forKey: .allergens)
+        cuisinePrefs = try container.decodeIfPresent([String].self, forKey: .cuisinePrefs) ?? []
+    }
 }
 
 private struct PreferencesResponse: Decodable {
@@ -226,7 +240,7 @@ actor DiningAPIService {
         return response.data
     }
 
-    func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String]) async throws {
+    func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String], cuisinePrefs: [String] = []) async throws {
         let token = await AuthManager.shared.jwtToken
         guard let url = URL(string: "\(baseURL)/preferences") else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
@@ -238,7 +252,8 @@ actor DiningAPIService {
         let body: [String: Any] = [
             "vegetarian": vegetarian,
             "vegan": vegan,
-            "allergens": allergens
+            "allergens": allergens,
+            "cuisine_prefs": cuisinePrefs
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, response) = try await URLSession.shared.data(for: request)

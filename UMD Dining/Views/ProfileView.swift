@@ -20,6 +20,24 @@ struct ProfileView: View {
                     Toggle("Dark Mode", isOn: $isDarkMode)
                 }
 
+                Section("Taste Preferences") {
+                    NavigationLink {
+                        PalateSurveyView(onComplete: {})
+                    } label: {
+                        HStack {
+                            Text("Cuisine Preferences")
+                            Spacer()
+                            if preferences.cuisinePrefs.isEmpty {
+                                Text("Not set")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("\(preferences.cuisinePrefs.count) selected")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
                 Section("Dietary Preferences") {
                     Toggle("Vegetarian", isOn: $preferences.vegetarian)
                     Toggle("Vegan", isOn: $preferences.vegan)

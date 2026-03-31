@@ -142,12 +142,10 @@ def rank_items(
         # --- Assign display tag (highest-priority signal) ---
         if 'favorite' in signals:
             tag = 'Favorite'
-        elif 'favorite_station' in signals:
-            tag = 'Favorite Station'
         elif 'trending' in signals:
             tag = 'Trending'
         elif 'similar_to_favorites' in signals:
-            tag = 'Similar to Favorites'
+            tag = 'Recommended'
         elif 'high_protein' in signals or 'protein_ratio' in signals:
             tag = 'High Protein'
         else:
