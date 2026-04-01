@@ -174,7 +174,7 @@ struct HomeView: View {
                 .padding(.vertical, 8)
             }
             .refreshable {
-                await viewModel.loadMenus()
+                await viewModel.forceReloadMenus()
             }
         }
     }

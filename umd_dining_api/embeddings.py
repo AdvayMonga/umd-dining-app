@@ -1,6 +1,6 @@
 # Uses requests (already in requirements.txt) — no openai SDK needed.
 import os
-import math
+import numpy as np
 import requests
 
 OPENAI_EMBEDDING_URL = "https://api.openai.com/v1/embeddings"
@@ -38,22 +38,15 @@ def generate_and_store_embedding(db, rec_num: str, food_doc: dict) -> None:
     db.foods.update_one({"rec_num": rec_num}, {"$set": {"embedding": embedding}})
 
 
-def cosine_similarity(vec_a: list, vec_b: list) -> float:
+def cosine_similarity(vec_a, vec_b) -> float:
     """Cosine similarity in [-1, 1]. Returns 0.0 if either vector is zero-magnitude."""
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
-    mag_a = math.sqrt(sum(a * a for a in vec_a))
-    mag_b = math.sqrt(sum(b * b for b in vec_b))
-    return 0.0 if mag_a == 0.0 or mag_b == 0.0 else dot / (mag_a * mag_b)
+    a, b = np.asarray(vec_a, dtype=np.float32), np.asarray(vec_b, dtype=np.float32)
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    return 0.0 if denom == 0.0 else float(np.dot(a, b) / denom)
 
 
-def compute_centroid(embeddings: list):
+def compute_centroid(embeddings):
     """Mean vector of a list of embeddings. Returns None if list is empty."""
     if not embeddings:
         return None
-    n = len(embeddings)
-    dim = len(embeddings[0])
-    centroid = [0.0] * dim
-    for vec in embeddings:
-        for i, val in enumerate(vec):
-            centroid[i] += val
-    return [x / n for x in centroid]
+    return np.mean(np.asarray(embeddings, dtype=np.float32), axis=0).tolist()

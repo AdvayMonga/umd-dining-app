@@ -47,6 +47,10 @@ class HomeViewModel {
 
     var showDiscovery: Bool = false
 
+    // Cache: skip network call if same date already loaded
+    private var lastLoadedDate: String?
+    private var hasLoadedPrefs = false
+
     // Snapshot of favorites at load time — keeps feed order stable until refresh
     private var loadedFavRecNums: Set<String> = []
     private var loadedFavStations: Set<String> = []
@@ -203,16 +207,21 @@ class HomeViewModel {
     }
 
     func loadMenus() async {
-        isLoading = true
+        // Skip if same date is already loaded — show cached feed instantly
+        guard lastLoadedDate != dateString else { return }
+
+        isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
-        allItems = []
         showDiscovery = false
 
-        // Sync temp filters from saved profile preferences
-        let prefs = UserPreferences.shared
-        filterVegetarian = prefs.vegetarian
-        filterVegan = prefs.vegan
-        filterAllergens = prefs.allergens
+        // Sync temp filters from saved profile preferences (once per session)
+        if !hasLoadedPrefs {
+            let prefs = UserPreferences.shared
+            filterVegetarian = prefs.vegetarian
+            filterVegan = prefs.vegan
+            filterAllergens = prefs.allergens
+            hasLoadedPrefs = true
+        }
 
         // Snapshot favorites at load time so feed order stays stable until next refresh
         loadedFavRecNums = Set(FavoritesManager.shared.favoriteFoods.keys)
@@ -225,13 +234,24 @@ class HomeViewModel {
                 diningHallIds: allHallIds,
                 userId: userId
             )
+            lastLoadedDate = dateString
             if !availableMealPeriods.contains(selectedMealPeriod),
                let first = availableMealPeriods.first {
                 selectedMealPeriod = first
             }
+        } catch is CancellationError {
+            // Ignore — task was superseded by a new load
         } catch {
-            errorMessage = error.localizedDescription
+            if !Task.isCancelled {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
+    }
+
+    func forceReloadMenus() async {
+        lastLoadedDate = nil
+        hasLoadedPrefs = false
+        await loadMenus()
     }
 }

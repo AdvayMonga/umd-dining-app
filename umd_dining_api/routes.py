@@ -1,13 +1,18 @@
 from flask import jsonify, request, g
 from app import app, db, limiter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import re
+import time
 import threading
 import os
 import jwt as pyjwt
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 from ranker import rank_items
+
+# Thread pool for parallelizing DB queries within a request
+_db_pool = ThreadPoolExecutor(max_workers=8)
 
 
 def _ensure_string(value, field_name='field'):
@@ -15,6 +20,23 @@ def _ensure_string(value, field_name='field'):
     if not isinstance(value, str):
         raise ValueError(f'{field_name} must be a string')
     return value
+
+
+# --- Trending cache (global across all users, refreshed every 5 min) ---
+_trending_cache = {'data': set(), 'expires': 0}
+
+def _get_trending():
+    now = time.time()
+    if now < _trending_cache['expires']:
+        return _trending_cache['data']
+    pipeline = [
+        {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+        {'$limit': 50}
+    ]
+    result = {doc['_id'] for doc in db.favorites.aggregate(pipeline)}
+    _trending_cache.update({'data': result, 'expires': now + 300})
+    return result
 
 
 # --- Auth decorators ---
@@ -110,50 +132,74 @@ def get_ranked_menu():
         if not date:
             return jsonify({'success': False, 'error': 'date required'}), 400
 
-        menu_entries = list(db.menus.find(
-            {'date': date, 'dining_hall_id': {'$in': dining_hall_ids}},
-            {'_id': 0}
-        ))
+        # --- Phase 1: Parallel DB queries (all independent reads) ---
+        def fetch_menus():
+            return list(db.menus.find(
+                {'date': date, 'dining_hall_id': {'$in': dining_hall_ids}},
+                {'_id': 0}
+            ))
+
+        def fetch_user_favs():
+            if not user_id:
+                return set()
+            return {fav['rec_num'] for fav in db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0})}
+
+        def fetch_user_stations():
+            if not user_id:
+                return set()
+            return {sf['station_name'] for sf in db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0})}
+
+        def fetch_user_prefs():
+            if not user_id:
+                return {}
+            return db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
+
+        f_menus = _db_pool.submit(fetch_menus)
+        f_favs = _db_pool.submit(fetch_user_favs)
+        f_stations = _db_pool.submit(fetch_user_stations)
+        f_prefs = _db_pool.submit(fetch_user_prefs)
+
+        menu_entries = f_menus.result()
+        fav_rec_nums = f_favs.result()
+        fav_stations = f_stations.result()
+        user_prefs = f_prefs.result()
+
+        # --- Phase 2: Fetch foods (exclude embeddings — they're huge and only needed for similarity) ---
         rec_nums = [e['rec_num'] for e in menu_entries]
-        foods = {f['rec_num']: f for f in db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0})}
+        foods = {f['rec_num']: f for f in db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0, 'embedding': 0})}
 
-        fav_rec_nums = set()
-        fav_stations = set()
-        user_prefs = {}
+        # --- Phase 3: Fetch embeddings only if user has favorites (for similarity scoring) ---
         fav_embeddings = []
-        if user_id:
-            for fav in db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0}):
-                fav_rec_nums.add(fav['rec_num'])
-            for sf in db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0}):
-                fav_stations.add(sf['station_name'])
-            prefs_doc = db.preferences.find_one({'user_id': user_id}, {'_id': 0})
-            if prefs_doc:
-                user_prefs = prefs_doc
+        if user_id and fav_rec_nums:
+            fav_food_docs = db.foods.find(
+                {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
+                {'embedding': 1, '_id': 0}
+            )
+            fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
 
-            # Fetch embeddings for all favorited foods (not just today's menu — past favs still encode taste)
-            if fav_rec_nums:
-                fav_food_docs = db.foods.find(
-                    {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
-                    {'embedding': 1, '_id': 0}
-                )
-                fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
+            # If user has favorites, also fetch embeddings for today's menu items (for cosine scoring)
+            if fav_embeddings:
+                menu_embeddings = {f['rec_num']: f['embedding'] for f in db.foods.find(
+                    {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True}},
+                    {'rec_num': 1, 'embedding': 1, '_id': 0}
+                ) if f.get('embedding')}
+                # Merge embeddings into foods dict for the ranker
+                for rn, emb in menu_embeddings.items():
+                    if rn in foods:
+                        foods[rn]['embedding'] = emb
 
-            # Cold-start: if <3 real favorites, fall back to cuisine preference embeddings
-            if len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
-                cuisine_docs = db.cuisine_embeddings.find(
-                    {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
-                    {'embedding': 1, '_id': 0}
-                )
-                cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
-                if cuisine_embs:
-                    fav_embeddings = cuisine_embs
+        # Cold-start: if <3 real favorites, fall back to cuisine preference embeddings
+        if user_id and len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
+            cuisine_docs = db.cuisine_embeddings.find(
+                {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
+                {'embedding': 1, '_id': 0}
+            )
+            cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
+            if cuisine_embs:
+                fav_embeddings = cuisine_embs
 
-        pipeline = [
-            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-            {'$sort': {'count': -1}},
-            {'$limit': 50}
-        ]
-        popular_rec_nums = {doc['_id'] for doc in db.favorites.aggregate(pipeline)}
+        # Trending: cached globally, refreshed every 5 min
+        popular_rec_nums = _get_trending()
 
         result = rank_items(
             menu_entries=menu_entries,
