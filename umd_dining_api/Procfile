@@ -1,1 +1,1 @@
-web: gunicorn application:application --bind :8000 --workers 5 --worker-class gevent --timeout 120
+web: uvicorn application:application --host 0.0.0.0 --port 8000 --workers 5 --timeout-keep-alive 120

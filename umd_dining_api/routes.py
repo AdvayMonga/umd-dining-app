@@ -1,31 +1,37 @@
-from flask import jsonify, request, g
-from app import app, db, limiter
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
-from functools import wraps
+import asyncio
 import re
 import time
 import threading
+import uuid
 import os
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 import jwt as pyjwt
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Body
+from pydantic import BaseModel
+
+from main import db, limiter, SECRET_KEY, ADMIN_SECRET
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 from ranker import rank_items
 
-# Thread pool for parallelizing DB queries within a request
-_db_pool = ThreadPoolExecutor(max_workers=8)
+router = APIRouter()
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _ensure_string(value, field_name='field'):
-    """Reject non-string values to prevent NoSQL operator injection from JSON bodies."""
     if not isinstance(value, str):
-        raise ValueError(f'{field_name} must be a string')
+        raise HTTPException(status_code=400, detail=f'{field_name} must be a string')
     return value
 
 
-# --- Trending cache (global across all users, refreshed every 5 min) ---
-_trending_cache = {'data': set(), 'expires': 0}
+# --- Trending cache (global, 5-min TTL) ---
+_trending_cache: dict = {'data': set(), 'expires': 0}
 
-def _get_trending():
+async def _get_trending():
     now = time.time()
     if now < _trending_cache['expires']:
         return _trending_cache['data']
@@ -34,50 +40,101 @@ def _get_trending():
         {'$sort': {'count': -1}},
         {'$limit': 50}
     ]
-    result = {doc['_id'] for doc in db.favorites.aggregate(pipeline)}
+    result = set()
+    async for doc in db.favorites.aggregate(pipeline):
+        result.add(doc['_id'])
     _trending_cache.update({'data': result, 'expires': now + 300})
     return result
 
 
-# --- Auth decorators ---
+# ---------------------------------------------------------------------------
+# Auth dependencies
+# ---------------------------------------------------------------------------
 
-def require_auth(f):
-    """Validates Authorization: Bearer <jwt> and sets g.user_id."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.headers.get('Authorization', '')
-        if not auth.startswith('Bearer '):
-            return jsonify({'error': 'unauthorized'}), 401
-        token = auth[7:]
-        try:
-            payload = pyjwt.decode(token, os.environ['SECRET_KEY'], algorithms=['HS256'])
-            g.user_id = payload['sub']
-        except pyjwt.ExpiredSignatureError:
-            return jsonify({'error': 'token expired'}), 401
-        except pyjwt.InvalidTokenError:
-            return jsonify({'error': 'invalid token'}), 401
-        return f(*args, **kwargs)
-    return decorated
+async def get_current_user(authorization: str = Header(default='')) -> str:
+    if not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail='unauthorized')
+    token = authorization[7:]
+    try:
+        payload = pyjwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return payload['sub']
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail='token expired')
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail='invalid token')
 
 
-def _require_admin(f):
-    """Validates X-Admin-Key header against ADMIN_SECRET env var."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        secret = os.environ.get('ADMIN_SECRET')
-        if secret and request.headers.get('X-Admin-Key') != secret:
-            return jsonify({'error': 'unauthorized'}), 403
-        return f(*args, **kwargs)
-    return decorated
+async def get_optional_user(authorization: str = Header(default='')) -> Optional[str]:
+    if not authorization.startswith('Bearer '):
+        return None
+    try:
+        payload = pyjwt.decode(authorization[7:], SECRET_KEY, algorithms=['HS256'])
+        return payload['sub']
+    except pyjwt.InvalidTokenError:
+        return None
 
 
-# --- Public endpoints ---
+async def require_admin(x_admin_key: str = Header(default='')):
+    if ADMIN_SECRET and x_admin_key != ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail='unauthorized')
 
-@app.route('/')
-def home():
-    return jsonify({
+
+def _make_token(user_id: str) -> str:
+    return pyjwt.encode(
+        {'sub': user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
+        SECRET_KEY,
+        algorithm='HS256'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models for request bodies
+# ---------------------------------------------------------------------------
+
+class AppleAuthBody(BaseModel):
+    apple_user_id: str
+
+class FavoriteBody(BaseModel):
+    rec_num: str
+    name: str = ''
+
+class RemoveFavoriteBody(BaseModel):
+    rec_num: str
+
+class StationFavoriteBody(BaseModel):
+    station_name: str
+
+class PreferencesBody(BaseModel):
+    vegetarian: bool = False
+    vegan: bool = False
+    allergens: list[str] = []
+    cuisine_prefs: list[str] = []
+
+class IntakeBody(BaseModel):
+    rec_num: str
+    name: str = ''
+    date: str = ''
+    meal_period: str = ''
+    calories: float = 0
+    protein_g: float = 0.0
+    carbs_g: float = 0.0
+    fat_g: float = 0.0
+
+class RemoveIntakeBody(BaseModel):
+    rec_num: str
+    date: str = ''
+    logged_at: str = ''
+
+
+# ---------------------------------------------------------------------------
+# Public endpoints
+# ---------------------------------------------------------------------------
+
+@router.get('/')
+async def home():
+    return {
         'message': 'UMD Dining API is running!',
-        'version': '2.0',
+        'version': '3.0',
         'endpoints': {
             'dining_halls': '/api/dining-halls',
             'available_dates': '/api/available-dates',
@@ -86,120 +143,103 @@ def home():
             'search': '/api/search?q=...',
             'scrape': 'POST /api/scrape'
         }
-    })
+    }
 
-@app.get('/api/dining-halls')
-def get_dining_halls():
+
+@router.get('/api/dining-halls')
+async def get_dining_halls():
     try:
-        halls = list(db.dining_halls.find({}, {'_id': 0}))
-        return jsonify({
-            'success': True,
-            'count': len(halls),
-            'data': halls
-        })
+        halls = await db.dining_halls.find({}, {'_id': 0}).to_list(None)
+        return {'success': True, 'count': len(halls), 'data': halls}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/api/available-dates')
-def get_available_dates():
+
+@router.get('/api/available-dates')
+async def get_available_dates():
     try:
-        dates = db.menus.distinct("date")
-        return jsonify({
-            'success': True,
-            'count': len(dates),
-            'data': sorted(dates)
-        })
+        dates = await db.menus.distinct("date")
+        return {'success': True, 'count': len(dates), 'data': sorted(dates)}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/api/ranked-menu')
-@limiter.limit("60 per minute")
-def get_ranked_menu():
+
+@router.get('/api/ranked-menu')
+@limiter.limit("60/minute")
+async def get_ranked_menu(
+    request: Request,
+    date: str = Query(default=None),
+    dining_hall_ids: list[str] = Query(default=['19', '51', '16']),
+    user_id: Optional[str] = Depends(get_optional_user),
+):
     try:
-        date = request.args.get('date')
-        dining_hall_ids = request.args.getlist('dining_hall_ids') or ['19', '51', '16']
-
-        # Accept user_id from JWT only — no query param fallback to prevent user_id enumeration
-        auth = request.headers.get('Authorization', '')
-        user_id = None
-        if auth.startswith('Bearer '):
-            try:
-                payload = pyjwt.decode(auth[7:], os.environ['SECRET_KEY'], algorithms=['HS256'])
-                user_id = payload['sub']
-            except pyjwt.InvalidTokenError:
-                pass
-
         if not date:
-            return jsonify({'success': False, 'error': 'date required'}), 400
+            raise HTTPException(status_code=400, detail='date required')
 
-        # --- Phase 1: Parallel DB queries (all independent reads) ---
-        def fetch_menus():
-            return list(db.menus.find(
+        # --- Phase 1: Parallel async DB queries ---
+        async def fetch_menus():
+            return await db.menus.find(
                 {'date': date, 'dining_hall_id': {'$in': dining_hall_ids}},
                 {'_id': 0}
-            ))
+            ).to_list(None)
 
-        def fetch_user_favs():
+        async def fetch_user_favs():
             if not user_id:
                 return set()
-            return {fav['rec_num'] for fav in db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0})}
+            docs = await db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0}).to_list(None)
+            return {d['rec_num'] for d in docs}
 
-        def fetch_user_stations():
+        async def fetch_user_stations():
             if not user_id:
                 return set()
-            return {sf['station_name'] for sf in db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0})}
+            docs = await db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0}).to_list(None)
+            return {d['station_name'] for d in docs}
 
-        def fetch_user_prefs():
+        async def fetch_user_prefs():
             if not user_id:
                 return {}
-            return db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
+            return await db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
 
-        f_menus = _db_pool.submit(fetch_menus)
-        f_favs = _db_pool.submit(fetch_user_favs)
-        f_stations = _db_pool.submit(fetch_user_stations)
-        f_prefs = _db_pool.submit(fetch_user_prefs)
+        menu_entries, fav_rec_nums, fav_stations, user_prefs, popular_rec_nums = await asyncio.gather(
+            fetch_menus(),
+            fetch_user_favs(),
+            fetch_user_stations(),
+            fetch_user_prefs(),
+            _get_trending(),
+        )
 
-        menu_entries = f_menus.result()
-        fav_rec_nums = f_favs.result()
-        fav_stations = f_stations.result()
-        user_prefs = f_prefs.result()
-
-        # --- Phase 2: Fetch foods (exclude embeddings — they're huge and only needed for similarity) ---
+        # --- Phase 2: Fetch foods (exclude embeddings) ---
         rec_nums = [e['rec_num'] for e in menu_entries]
-        foods = {f['rec_num']: f for f in db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0, 'embedding': 0})}
+        food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0, 'embedding': 0}).to_list(None)
+        foods = {f['rec_num']: f for f in food_docs}
 
-        # --- Phase 3: Fetch embeddings only if user has favorites (for similarity scoring) ---
+        # --- Phase 3: Fetch embeddings only if user has favorites ---
         fav_embeddings = []
         if user_id and fav_rec_nums:
-            fav_food_docs = db.foods.find(
+            fav_food_docs = await db.foods.find(
                 {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
                 {'embedding': 1, '_id': 0}
-            )
+            ).to_list(None)
             fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
 
-            # If user has favorites, also fetch embeddings for today's menu items (for cosine scoring)
             if fav_embeddings:
-                menu_embeddings = {f['rec_num']: f['embedding'] for f in db.foods.find(
+                menu_emb_docs = await db.foods.find(
                     {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True}},
                     {'rec_num': 1, 'embedding': 1, '_id': 0}
-                ) if f.get('embedding')}
-                # Merge embeddings into foods dict for the ranker
-                for rn, emb in menu_embeddings.items():
-                    if rn in foods:
-                        foods[rn]['embedding'] = emb
+                ).to_list(None)
+                for doc in menu_emb_docs:
+                    if doc.get('embedding') and doc['rec_num'] in foods:
+                        foods[doc['rec_num']]['embedding'] = doc['embedding']
 
-        # Cold-start: if <3 real favorites, fall back to cuisine preference embeddings
+        # Cold-start fallback
         if user_id and len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
-            cuisine_docs = db.cuisine_embeddings.find(
+            cuisine_docs = await db.cuisine_embeddings.find(
                 {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
                 {'embedding': 1, '_id': 0}
-            )
+            ).to_list(None)
             cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
             if cuisine_embs:
                 fav_embeddings = cuisine_embs
-
-        # Trending: cached globally, refreshed every 5 min
-        popular_rec_nums = _get_trending()
 
         result = rank_items(
             menu_entries=menu_entries,
@@ -212,29 +252,34 @@ def get_ranked_menu():
             fav_embeddings=fav_embeddings,
         )
 
-        return jsonify({'success': True, 'count': len(result), 'data': result})
+        return {'success': True, 'count': len(result), 'data': result}
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/api/menu')
-def get_menu():
+
+@router.get('/api/menu')
+async def get_menu(
+    date: Optional[str] = Query(default=None),
+    dining_hall_id: Optional[str] = Query(default=None),
+):
     try:
-        query = {}
-        dining_hall_id = request.args.get('dining_hall_id')
-        date = request.args.get('date')
+        query: dict = {}
         if dining_hall_id:
             query['dining_hall_id'] = dining_hall_id
         if date:
             query['date'] = date
 
-        menu_entries = list(db.menus.find(query, {'_id': 0}))
+        menu_entries = await db.menus.find(query, {'_id': 0}).to_list(None)
         rec_nums = [entry['rec_num'] for entry in menu_entries]
-        foods = {f['rec_num']: f for f in db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0})}
+        food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0}).to_list(None)
+        foods = {f['rec_num']: f for f in food_docs}
 
         items = []
         for entry in menu_entries:
             food = foods.get(entry['rec_num'], {})
-            item = {
+            items.append({
                 'name': food.get('name', ''),
                 'rec_num': entry['rec_num'],
                 'dining_hall_id': entry['dining_hall_id'],
@@ -246,26 +291,27 @@ def get_menu():
                 'nutrition': food.get('nutrition', {}),
                 'allergens': food.get('allergens', ''),
                 'ingredients': food.get('ingredients', ''),
-            }
-            items.append(item)
+            })
 
-        return jsonify({'success': True, 'count': len(items), 'filters': query, 'data': items})
+        return {'success': True, 'count': len(items), 'filters': query, 'data': items}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/api/nutrition')
-@limiter.limit("60 per minute")
-def get_nutrition():
+
+@router.get('/api/nutrition')
+@limiter.limit("60/minute")
+async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
     try:
-        rec_num = request.args.get('rec_num')
         if not rec_num:
-            return jsonify({'success': False, 'error': 'rec_num parameter required'}), 400
+            raise HTTPException(status_code=400, detail='rec_num parameter required')
 
-        food = fetch_and_cache_nutrition(rec_num)
+        # fetch_and_cache_nutrition is sync (hits UMD's site) — run in thread
+        loop = asyncio.get_event_loop()
+        food = await loop.run_in_executor(None, fetch_and_cache_nutrition, rec_num)
         if not food:
-            return jsonify({'success': False, 'error': 'Food not found'}), 404
+            raise HTTPException(status_code=404, detail='Food not found')
 
-        return jsonify({
+        return {
             'success': True,
             'data': {
                 'rec_num': food['rec_num'],
@@ -274,75 +320,83 @@ def get_nutrition():
                 'allergens': food.get('allergens', ''),
                 'ingredients': food.get('ingredients', ''),
             }
-        })
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/api/search')
-@limiter.limit("30 per minute")
-def search_menu():
+
+@router.get('/api/search')
+@limiter.limit("30/minute")
+async def search_menu(request: Request, q: str = Query(default='')):
     try:
-        search_query = request.args.get('q', '')
-        if not search_query:
-            return jsonify({'success': False, 'error': 'Search query required'}), 400
-        if len(search_query) > 100:
-            return jsonify({'success': False, 'error': 'Search query too long'}), 400
+        if not q:
+            raise HTTPException(status_code=400, detail='Search query required')
+        if len(q) > 100:
+            raise HTTPException(status_code=400, detail='Search query too long')
 
-        # Escape regex special chars to prevent ReDoS and operator injection
-        safe_query = re.escape(search_query)
-
-        foods = list(db.foods.find(
+        safe_query = re.escape(q)
+        foods = await db.foods.find(
             {'name': {'$regex': safe_query, '$options': 'i'}},
             {'_id': 0, 'embedding': 0}
-        ).limit(50))
+        ).limit(50).to_list(None)
 
-        return jsonify({'success': True, 'query': search_query, 'count': len(foods), 'data': foods})
+        return {'success': True, 'query': q, 'count': len(foods), 'data': foods}
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Admin endpoints ---
+# ---------------------------------------------------------------------------
+# Admin endpoints
+# ---------------------------------------------------------------------------
 
-@app.post('/api/scrape')
-@_require_admin
-def scrape():
-    date = request.args.get('date', datetime.now().strftime('%-m/%-d/%Y'))
-    dining_hall_id = request.args.get('dining_hall_id')
+@router.post('/api/scrape')
+async def scrape(
+    date: Optional[str] = Query(default=None),
+    dining_hall_id: Optional[str] = Query(default=None),
+    _: None = Depends(require_admin),
+):
+    scrape_date = date or datetime.now().strftime('%-m/%-d/%Y')
     if dining_hall_id:
-        threading.Thread(target=scrape_dining_hall, args=(dining_hall_id, date), daemon=False).start()
+        threading.Thread(target=scrape_dining_hall, args=(dining_hall_id, scrape_date), daemon=False).start()
     else:
-        threading.Thread(target=scrape_all_dining_halls, args=(date,), daemon=False).start()
-    return jsonify({'success': True, 'date': date, 'status': 'scrape started'})
+        threading.Thread(target=scrape_all_dining_halls, args=(scrape_date,), daemon=False).start()
+    return {'success': True, 'date': scrape_date, 'status': 'scrape started'}
 
-@app.post('/api/scrape-week')
-@_require_admin
-def scrape_week():
+
+@router.post('/api/scrape-week')
+async def scrape_week(_: None = Depends(require_admin)):
     threading.Thread(target=scrape_full_week, daemon=False).start()
-    return jsonify({'success': True, 'status': 'scrape started'})
+    return {'success': True, 'status': 'scrape started'}
 
-def _run_embed_missing():
-    from embeddings import generate_and_store_embedding
-    import time
-    cursor = db.foods.find({'embedding': {'$exists': False}}, {'_id': 0})
-    for food in cursor:
-        try:
-            generate_and_store_embedding(db, food['rec_num'], food)
-            time.sleep(0.1)
-        except Exception as e:
-            print(f"Embedding failed for {food['rec_num']}: {e}")
 
-@app.post('/api/embed-missing')
-@_require_admin
-def embed_missing():
-    threading.Thread(target=_run_embed_missing, daemon=False).start()
-    return jsonify({'success': True, 'status': 'embedding started in background'})
+@router.post('/api/embed-missing')
+async def embed_missing(_: None = Depends(require_admin)):
+    def _run():
+        from embeddings import generate_and_store_embedding
+        from pymongo import MongoClient
+        import time as _time
+        sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
+        sync_db = sync_client.get_default_database()
+        for food in sync_db.foods.find({'embedding': {'$exists': False}}, {'_id': 0}):
+            try:
+                generate_and_store_embedding(sync_db, food['rec_num'], food)
+                _time.sleep(0.1)
+            except Exception as e:
+                print(f"Embedding failed for {food['rec_num']}: {e}")
+        sync_client.close()
+    threading.Thread(target=_run, daemon=False).start()
+    return {'success': True, 'status': 'embedding started in background'}
 
-@app.post('/api/cuisine-embeddings/generate')
-@_require_admin
-def generate_cuisine_embeddings():
-    """One-time: generate and store embedding centroids for each cuisine category."""
+
+@router.post('/api/cuisine-embeddings/generate')
+async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
     from embeddings import generate_embedding, compute_centroid
-    import time
+    from pymongo import MongoClient
+    import time as _time
 
     CUISINES = {
         'comfort': ['Cheeseburger', 'Mac and Cheese', 'Grilled Cheese Sandwich', 'French Fries', 'Chicken Tenders'],
@@ -354,348 +408,272 @@ def generate_cuisine_embeddings():
         'breakfast': ['Pancakes with Syrup', 'Scrambled Eggs and Bacon', 'French Toast', 'Breakfast Burrito', 'Waffles'],
     }
 
+    sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
+    sync_db = sync_client.get_default_database()
+
     results = {}
-    for cuisine, foods in CUISINES.items():
+    for cuisine, food_names in CUISINES.items():
         embeddings = []
-        for food_name in foods:
+        for food_name in food_names:
             try:
                 emb = generate_embedding(food_name)
                 embeddings.append(emb)
-                time.sleep(0.1)
+                _time.sleep(0.1)
             except Exception as e:
                 print(f"Failed to embed {food_name}: {e}")
 
         if embeddings:
             centroid = compute_centroid(embeddings)
-            db.cuisine_embeddings.update_one(
+            sync_db.cuisine_embeddings.update_one(
                 {'cuisine': cuisine},
                 {'$set': {'cuisine': cuisine, 'embedding': centroid}},
                 upsert=True
             )
             results[cuisine] = len(embeddings)
 
-    return jsonify({'success': True, 'generated': results})
+    sync_client.close()
+    return {'success': True, 'generated': results}
 
 
-# --- Auth ---
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 
-@app.post('/api/auth/guest')
-@limiter.limit("10 per minute")
-def auth_guest():
+@router.post('/api/auth/guest')
+@limiter.limit("10/minute")
+async def auth_guest(request: Request):
     try:
-        import uuid
         guest_id = f"guest_{uuid.uuid4().hex}"
-
-        db.users.insert_one({
+        await db.users.insert_one({
             'user_id': guest_id,
             'is_guest': True,
             'created_at': datetime.now().isoformat()
         })
-
-        token = pyjwt.encode(
-            {'sub': guest_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
-            os.environ['SECRET_KEY'],
-            algorithm='HS256'
-        )
-
-        return jsonify({'success': True, 'user_id': guest_id, 'token': token})
+        return {'success': True, 'user_id': guest_id, 'token': _make_token(guest_id)}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post('/api/auth/apple')
-@limiter.limit("10 per minute")
-def auth_apple():
+
+@router.post('/api/auth/apple')
+@limiter.limit("10/minute")
+async def auth_apple(request: Request, body: AppleAuthBody = Body(...)):
     try:
-        data = request.get_json()
-        apple_user_id = _ensure_string(data.get('apple_user_id', ''), 'apple_user_id')
-        if not apple_user_id:
-            return jsonify({'success': False, 'error': 'apple_user_id required'}), 400
+        if not body.apple_user_id:
+            raise HTTPException(status_code=400, detail='apple_user_id required')
 
-        db.users.update_one(
-            {'apple_user_id': apple_user_id},
-            {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now().isoformat()}},
+        await db.users.update_one(
+            {'apple_user_id': body.apple_user_id},
+            {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
+            upsert=True
+        )
+        return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/api/auth/upgrade')
+@limiter.limit("10/minute")
+async def upgrade_guest(
+    request: Request,
+    body: AppleAuthBody = Body(...),
+    user_id: str = Depends(get_current_user),
+):
+    try:
+        if not body.apple_user_id:
+            raise HTTPException(status_code=400, detail='apple_user_id required')
+        if not user_id.startswith('guest_'):
+            raise HTTPException(status_code=400, detail='not a guest account')
+
+        await db.users.update_one(
+            {'apple_user_id': body.apple_user_id},
+            {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
             upsert=True
         )
 
-        token = pyjwt.encode(
-            {'sub': apple_user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
-            os.environ['SECRET_KEY'],
-            algorithm='HS256'
-        )
+        # Migrate all user data
+        for coll in [db.favorites, db.station_favorites, db.preferences, db.intake]:
+            await coll.update_many({'user_id': user_id}, {'$set': {'user_id': body.apple_user_id}})
 
-        return jsonify({'success': True, 'user_id': apple_user_id, 'token': token})
+        await db.users.delete_one({'user_id': user_id})
+
+        return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post('/api/auth/upgrade')
-@require_auth
-@limiter.limit("10 per minute")
-def upgrade_guest():
-    """Upgrade a guest account to an Apple account, migrating all data."""
+
+@router.post('/api/auth/refresh')
+@limiter.limit("10/minute")
+async def refresh_token(request: Request, user_id: str = Depends(get_current_user)):
     try:
-        data = request.get_json()
-        apple_user_id = _ensure_string(data.get('apple_user_id', ''), 'apple_user_id')
-        if not apple_user_id:
-            return jsonify({'success': False, 'error': 'apple_user_id required'}), 400
+        return {'success': True, 'token': _make_token(user_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        guest_id = g.user_id
-        if not guest_id.startswith('guest_'):
-            return jsonify({'success': False, 'error': 'not a guest account'}), 400
 
-        # Create or find the Apple user
-        db.users.update_one(
-            {'apple_user_id': apple_user_id},
-            {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now().isoformat()}},
+# ---------------------------------------------------------------------------
+# Favorites
+# ---------------------------------------------------------------------------
+
+@router.get('/api/favorites')
+async def get_favorites(user_id: str = Depends(get_current_user)):
+    try:
+        favs = await db.favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
+        return {'success': True, 'data': favs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/api/favorites')
+async def add_favorite(body: FavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
+    try:
+        await db.favorites.update_one(
+            {'user_id': user_id, 'rec_num': body.rec_num},
+            {'$set': {'user_id': user_id, 'rec_num': body.rec_num, 'name': body.name, 'added_at': datetime.now().isoformat()}},
             upsert=True
         )
-
-        # Migrate favorites, station_favorites, preferences, and intake from guest to Apple user
-        db.favorites.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
-        db.station_favorites.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
-        db.preferences.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
-        db.intake.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
-
-        # Delete the guest user record
-        db.users.delete_one({'user_id': guest_id})
-
-        token = pyjwt.encode(
-            {'sub': apple_user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
-            os.environ['SECRET_KEY'],
-            algorithm='HS256'
-        )
-
-        return jsonify({'success': True, 'user_id': apple_user_id, 'token': token})
+        return {'success': True}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post('/api/auth/refresh')
-@require_auth
-@limiter.limit("10 per minute")
-def refresh_token():
+
+@router.delete('/api/favorites')
+async def remove_favorite(body: RemoveFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     try:
-        token = pyjwt.encode(
-            {'sub': g.user_id, 'exp': datetime.now(timezone.utc) + timedelta(days=90)},
-            os.environ['SECRET_KEY'],
-            algorithm='HS256'
-        )
-        return jsonify({'success': True, 'token': token})
+        await db.favorites.delete_one({'user_id': user_id, 'rec_num': body.rec_num})
+        return {'success': True}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Favorites (auth required) ---
+# ---------------------------------------------------------------------------
+# Station Favorites
+# ---------------------------------------------------------------------------
 
-@app.get('/api/favorites')
-@require_auth
-def get_favorites():
+@router.get('/api/station-favorites')
+async def get_station_favorites(user_id: str = Depends(get_current_user)):
     try:
-        favs = list(db.favorites.find({'user_id': g.user_id}, {'_id': 0}))
-        return jsonify({'success': True, 'data': favs})
+        favs = await db.station_favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
+        return {'success': True, 'data': favs}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post('/api/favorites')
-@require_auth
-def add_favorite():
+
+@router.post('/api/station-favorites')
+async def add_station_favorite(body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     try:
-        data = request.get_json()
-        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
-        name = _ensure_string(data.get('name', ''), 'name')
-        if not rec_num:
-            return jsonify({'success': False, 'error': 'rec_num required'}), 400
-
-        db.favorites.update_one(
-            {'user_id': g.user_id, 'rec_num': rec_num},
-            {'$set': {'user_id': g.user_id, 'rec_num': rec_num, 'name': name, 'added_at': datetime.now().isoformat()}},
+        await db.station_favorites.update_one(
+            {'user_id': user_id, 'station_name': body.station_name},
+            {'$set': {'user_id': user_id, 'station_name': body.station_name, 'added_at': datetime.now().isoformat()}},
             upsert=True
         )
-        return jsonify({'success': True})
+        return {'success': True}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete('/api/favorites')
-@require_auth
-def remove_favorite():
+
+@router.delete('/api/station-favorites')
+async def remove_station_favorite(body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     try:
-        data = request.get_json()
-        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
-        if not rec_num:
-            return jsonify({'success': False, 'error': 'rec_num required'}), 400
-
-        db.favorites.delete_one({'user_id': g.user_id, 'rec_num': rec_num})
-        return jsonify({'success': True})
+        await db.station_favorites.delete_one({'user_id': user_id, 'station_name': body.station_name})
+        return {'success': True}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Station Favorites (auth required) ---
+# ---------------------------------------------------------------------------
+# Preferences
+# ---------------------------------------------------------------------------
 
-@app.get('/api/station-favorites')
-@require_auth
-def get_station_favorites():
+@router.get('/api/preferences')
+async def get_preferences(user_id: str = Depends(get_current_user)):
     try:
-        favs = list(db.station_favorites.find({'user_id': g.user_id}, {'_id': 0}))
-        return jsonify({'success': True, 'data': favs})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.post('/api/station-favorites')
-@require_auth
-def add_station_favorite():
-    try:
-        data = request.get_json()
-        station_name = _ensure_string(data.get('station_name', ''), 'station_name')
-        if not station_name:
-            return jsonify({'success': False, 'error': 'station_name required'}), 400
-
-        db.station_favorites.update_one(
-            {'user_id': g.user_id, 'station_name': station_name},
-            {'$set': {'user_id': g.user_id, 'station_name': station_name, 'added_at': datetime.now().isoformat()}},
-            upsert=True
-        )
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.delete('/api/station-favorites')
-@require_auth
-def remove_station_favorite():
-    try:
-        data = request.get_json()
-        station_name = _ensure_string(data.get('station_name', ''), 'station_name')
-        if not station_name:
-            return jsonify({'success': False, 'error': 'station_name required'}), 400
-
-        db.station_favorites.delete_one({'user_id': g.user_id, 'station_name': station_name})
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# --- Preferences (auth required) ---
-
-@app.get('/api/preferences')
-@require_auth
-def get_preferences():
-    try:
-        prefs = db.preferences.find_one({'user_id': g.user_id}, {'_id': 0})
+        prefs = await db.preferences.find_one({'user_id': user_id}, {'_id': 0})
         if not prefs:
-            prefs = {'user_id': g.user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
-        return jsonify({'success': True, 'data': prefs})
+            prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
+        return {'success': True, 'data': prefs}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.put('/api/preferences')
-@require_auth
-def update_preferences():
+
+@router.put('/api/preferences')
+async def update_preferences(body: PreferencesBody = Body(...), user_id: str = Depends(get_current_user)):
     try:
-        data = request.get_json()
-        vegetarian = data.get('vegetarian', False)
-        vegan = data.get('vegan', False)
-        allergens = data.get('allergens', [])
-        cuisine_prefs = data.get('cuisine_prefs', [])
-
-        # Validate types to prevent operator injection
-        if not isinstance(vegetarian, bool) or not isinstance(vegan, bool):
-            return jsonify({'success': False, 'error': 'vegetarian and vegan must be booleans'}), 400
-        if not isinstance(allergens, list) or not all(isinstance(a, str) for a in allergens):
-            return jsonify({'success': False, 'error': 'allergens must be a list of strings'}), 400
-        if not isinstance(cuisine_prefs, list) or not all(isinstance(c, str) for c in cuisine_prefs):
-            return jsonify({'success': False, 'error': 'cuisine_prefs must be a list of strings'}), 400
-
-        db.preferences.update_one(
-            {'user_id': g.user_id},
+        await db.preferences.update_one(
+            {'user_id': user_id},
             {'$set': {
-                'user_id': g.user_id,
-                'vegetarian': vegetarian,
-                'vegan': vegan,
-                'allergens': allergens,
-                'cuisine_prefs': cuisine_prefs,
+                'user_id': user_id,
+                'vegetarian': body.vegetarian,
+                'vegan': body.vegan,
+                'allergens': body.allergens,
+                'cuisine_prefs': body.cuisine_prefs,
             }},
             upsert=True
         )
-        return jsonify({'success': True})
+        return {'success': True}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Intake Tracking (auth required) ---
+# ---------------------------------------------------------------------------
+# Intake Tracking
+# ---------------------------------------------------------------------------
 
-@app.get('/api/intake')
-@require_auth
-def get_intake():
+@router.get('/api/intake')
+async def get_intake(date: Optional[str] = Query(default=None), user_id: str = Depends(get_current_user)):
     try:
-        query = {'user_id': g.user_id}
-        date = request.args.get('date')
+        query: dict = {'user_id': user_id}
         if date:
             query['date'] = date
-        items = list(db.intake.find(query, {'_id': 0}))
-        return jsonify({'success': True, 'data': items})
+        items = await db.intake.find(query, {'_id': 0}).to_list(None)
+        return {'success': True, 'data': items}
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post('/api/intake')
-@require_auth
-def log_intake():
+
+@router.post('/api/intake')
+async def log_intake(body: IntakeBody = Body(...), user_id: str = Depends(get_current_user)):
     try:
-        data = request.get_json()
-        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
-        name = _ensure_string(data.get('name', ''), 'name')
-        date = _ensure_string(data.get('date', ''), 'date')
-        meal_period = _ensure_string(data.get('meal_period', ''), 'meal_period')
+        if not body.rec_num:
+            raise HTTPException(status_code=400, detail='rec_num required')
 
-        if not rec_num:
-            return jsonify({'success': False, 'error': 'rec_num required'}), 400
-
-        calories = data.get('calories', 0)
-        protein_g = data.get('protein_g', 0.0)
-        carbs_g = data.get('carbs_g', 0.0)
-        fat_g = data.get('fat_g', 0.0)
-
-        if not isinstance(calories, (int, float)):
-            return jsonify({'success': False, 'error': 'calories must be a number'}), 400
-        if not all(isinstance(v, (int, float)) for v in [protein_g, carbs_g, fat_g]):
-            return jsonify({'success': False, 'error': 'macros must be numbers'}), 400
-
-        db.intake.insert_one({
-            'user_id': g.user_id,
-            'rec_num': rec_num,
-            'name': name,
-            'date': date,
-            'meal_period': meal_period,
-            'calories': int(calories),
-            'protein_g': float(protein_g),
-            'carbs_g': float(carbs_g),
-            'fat_g': float(fat_g),
+        await db.intake.insert_one({
+            'user_id': user_id,
+            'rec_num': body.rec_num,
+            'name': body.name,
+            'date': body.date,
+            'meal_period': body.meal_period,
+            'calories': int(body.calories),
+            'protein_g': float(body.protein_g),
+            'carbs_g': float(body.carbs_g),
+            'fat_g': float(body.fat_g),
             'logged_at': datetime.now().isoformat(),
         })
-        return jsonify({'success': True})
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return {'success': True}
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete('/api/intake')
-@require_auth
-def remove_intake():
+
+@router.delete('/api/intake')
+async def remove_intake(body: RemoveIntakeBody = Body(...), user_id: str = Depends(get_current_user)):
     try:
-        data = request.get_json()
-        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
-        date = _ensure_string(data.get('date', ''), 'date')
-        logged_at = _ensure_string(data.get('logged_at', ''), 'logged_at')
+        if not body.rec_num:
+            raise HTTPException(status_code=400, detail='rec_num required')
 
-        if not rec_num:
-            return jsonify({'success': False, 'error': 'rec_num required'}), 400
+        query: dict = {'user_id': user_id, 'rec_num': body.rec_num}
+        if body.date:
+            query['date'] = body.date
+        if body.logged_at:
+            query['logged_at'] = body.logged_at
 
-        query = {'user_id': g.user_id, 'rec_num': rec_num}
-        if date:
-            query['date'] = date
-        if logged_at:
-            query['logged_at'] = logged_at
-
-        db.intake.delete_one(query)
-        return jsonify({'success': True})
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        await db.intake.delete_one(query)
+        return {'success': True}
+    except HTTPException:
+        raise
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
