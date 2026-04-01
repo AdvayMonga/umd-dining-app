@@ -13,16 +13,23 @@ db = client.get_database()
 
 def lambda_handler(event, context):
     try:
-        print("Starting scrape for 7 days")
+        print("Starting scrape")
 
-        items = scrape_all_dining_halls(db)
+        items, failures = scrape_all_dining_halls(db)
 
-        print(f"Scrape complete: {len(items)} items")
+        if failures:
+            print(f"Scrape partial: {len(items)} items, {len(failures)} failures")
+            for f in failures:
+                print(f"  FAILED: {f}")
+
+        status = 200 if not failures else (207 if items else 500)
+        print(f"Scrape complete: {len(items)} items, {len(failures)} failures, status {status}")
         return {
-            "statusCode": 200,
+            "statusCode": status,
             "body": json.dumps({
-                "success": True,
+                "success": len(failures) == 0,
                 "items_scraped": len(items),
+                "failures": failures,
             }),
         }
     except Exception as e:

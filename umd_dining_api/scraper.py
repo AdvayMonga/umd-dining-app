@@ -26,7 +26,7 @@ DINING_HALLS = {
 
 def get_menu_page(location_num, date):
     url = f"{BASE_URL}/?locationNum={location_num}&dtdate={date}"
-    response = requests.get(url)
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
 
     return response.text
@@ -65,6 +65,10 @@ def parse_menu_page(html, dining_hall_id, date):
                 name = link.get_text(strip=True)
                 rec_num = href.split('RecNumAndPort=')[-1]
 
+                # Validate rec_num is a real identifier
+                if not rec_num or not rec_num.replace('*', '').replace('-', '').isalnum():
+                    continue
+
                 # Dietary icons (vegan, vegetarian, dairy, gluten, etc.)
                 icons = [img.get('alt', '') for img in row.find_all('img', class_='nutri-icon')]
 
@@ -78,30 +82,22 @@ def parse_menu_page(html, dining_hall_id, date):
                     "dietary_icons": icons,
                 })
 
-    # Fallback: if no tab panes found, grab all links
+    # If no tab panes found, HTML structure likely changed — don't produce garbage data
     if not panes:
-        for link in soup.find_all('a', href=True):
-            href = link.get('href')
-            if 'label.aspx' not in href:
-                continue
-            name = link.get_text(strip=True)
-            rec_num = href.split('RecNumAndPort=')[-1]
-            items.append({
-                "name": name,
-                "dining_hall_id": dining_hall_id,
-                "date": date,
-                "rec_num": rec_num,
-                "meal_period": "Unknown",
-                "station": "Unknown",
-                "dietary_icons": [],
-            })
+        print(f"WARNING: No tab-pane elements found for hall {dining_hall_id} on {date} — HTML structure may have changed")
+        return []
 
-    return items
+    # Filter out any items with Unknown meal period or station (partial HTML breakage)
+    valid = [i for i in items if i["meal_period"] != "Unknown" and i["station"] != "Unknown"]
+    if len(valid) < len(items):
+        print(f"WARNING: Dropped {len(items) - len(valid)} items with Unknown meal_period/station for hall {dining_hall_id} on {date}")
+
+    return valid
 
 
 def get_nutrition_info(rec_num):
     url = f"{BASE_URL}/label.aspx?RecNumAndPort={rec_num}"
-    response = requests.get(url)
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -169,12 +165,39 @@ def get_nutrition_info(rec_num):
 
     return nutrition
 
+def _fingerprint(item):
+    """Create a comparable tuple from a menu item for diff detection."""
+    return (item["rec_num"], item["meal_period"], item["station"], item["dining_hall_id"],
+            tuple(sorted(item.get("dietary_icons", []))))
+
+
+def _has_changes(db, date, dining_hall_id, scraped_items):
+    """Compare scraped items against what's in the DB. Returns True if anything changed."""
+    existing = list(db.menus.find({"date": date, "dining_hall_id": dining_hall_id}))
+    existing_fps = {(d["rec_num"], d["meal_period"], d["station"], d["dining_hall_id"],
+                     tuple(sorted(d.get("dietary_icons", [])))) for d in existing}
+    scraped_fps = {_fingerprint(item) for item in scraped_items}
+    return existing_fps != scraped_fps
+
+
 def scrape_dining_hall(location_num, date):
-    """Scrape a dining hall's menu for a date. Adds menu entries, food stubs, and pre-fetches nutrition."""
+    """Scrape a dining hall's menu for a date. Only writes to DB if data has changed."""
     items = parse_menu_page(get_menu_page(location_num, date), location_num, date)
 
+    # If scrape returned nothing, don't touch existing data (UMD site may not be updated yet)
+    if not items:
+        print(f"  No items scraped for hall {location_num} on {date} — keeping existing data")
+        return []
+
+    # Skip DB writes entirely if nothing changed
+    if not _has_changes(db, date, location_num, items):
+        print(f"  No changes for hall {location_num} on {date} — skipping")
+        return items
+
+    # Remove old records for this hall+date, then insert fresh
+    db.menus.delete_many({"date": date, "dining_hall_id": location_num})
+
     for item in items:
-        # Add to menus collection
         menu_doc = {
             "date": date,
             "dining_hall_id": location_num,
@@ -228,13 +251,14 @@ def scrape_all_dining_halls(date):
         except ValueError:
             pass
 
-    # Fresh scrape for the given date
-    db.menus.delete_many({"date": date})
-
+    # Scrape each hall individually — no blanket delete
     all_items = []
     for location_num in DINING_HALLS:
-        items = scrape_dining_hall(location_num, date)
-        all_items.extend(items)
+        try:
+            items = scrape_dining_hall(location_num, date)
+            all_items.extend(items)
+        except Exception as e:
+            print(f"Failed to scrape hall {location_num} for {date}: {e}")
 
     return all_items
 
