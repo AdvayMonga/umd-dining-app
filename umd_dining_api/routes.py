@@ -403,10 +403,11 @@ def upgrade_guest():
             upsert=True
         )
 
-        # Migrate favorites, station_favorites, and preferences from guest to Apple user
+        # Migrate favorites, station_favorites, preferences, and intake from guest to Apple user
         db.favorites.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
         db.station_favorites.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
         db.preferences.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
+        db.intake.update_many({'user_id': guest_id}, {'$set': {'user_id': apple_user_id}})
 
         # Delete the guest user record
         db.users.delete_one({'user_id': guest_id})
@@ -568,5 +569,87 @@ def update_preferences():
             upsert=True
         )
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# --- Intake Tracking (auth required) ---
+
+@app.get('/api/intake')
+@require_auth
+def get_intake():
+    try:
+        query = {'user_id': g.user_id}
+        date = request.args.get('date')
+        if date:
+            query['date'] = date
+        items = list(db.intake.find(query, {'_id': 0}))
+        return jsonify({'success': True, 'data': items})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/intake')
+@require_auth
+def log_intake():
+    try:
+        data = request.get_json()
+        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
+        name = _ensure_string(data.get('name', ''), 'name')
+        date = _ensure_string(data.get('date', ''), 'date')
+        meal_period = _ensure_string(data.get('meal_period', ''), 'meal_period')
+
+        if not rec_num:
+            return jsonify({'success': False, 'error': 'rec_num required'}), 400
+
+        calories = data.get('calories', 0)
+        protein_g = data.get('protein_g', 0.0)
+        carbs_g = data.get('carbs_g', 0.0)
+        fat_g = data.get('fat_g', 0.0)
+
+        if not isinstance(calories, (int, float)):
+            return jsonify({'success': False, 'error': 'calories must be a number'}), 400
+        if not all(isinstance(v, (int, float)) for v in [protein_g, carbs_g, fat_g]):
+            return jsonify({'success': False, 'error': 'macros must be numbers'}), 400
+
+        db.intake.insert_one({
+            'user_id': g.user_id,
+            'rec_num': rec_num,
+            'name': name,
+            'date': date,
+            'meal_period': meal_period,
+            'calories': int(calories),
+            'protein_g': float(protein_g),
+            'carbs_g': float(carbs_g),
+            'fat_g': float(fat_g),
+            'logged_at': datetime.now().isoformat(),
+        })
+        return jsonify({'success': True})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.delete('/api/intake')
+@require_auth
+def remove_intake():
+    try:
+        data = request.get_json()
+        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
+        date = _ensure_string(data.get('date', ''), 'date')
+        logged_at = _ensure_string(data.get('logged_at', ''), 'logged_at')
+
+        if not rec_num:
+            return jsonify({'success': False, 'error': 'rec_num required'}), 400
+
+        query = {'user_id': g.user_id, 'rec_num': rec_num}
+        if date:
+            query['date'] = date
+        if logged_at:
+            query['logged_at'] = logged_at
+
+        db.intake.delete_one(query)
+        return jsonify({'success': True})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

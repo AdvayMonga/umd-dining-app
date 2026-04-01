@@ -49,3 +49,6 @@ for hall_id, info in DINING_HALLS.items():
         upsert=True
     )
 print(f"Seeded {len(DINING_HALLS)} dining halls")
+
+# Ensure compound index for efficient intake queries
+db.intake.create_index([('user_id', 1), ('date', 1)])
