@@ -2,11 +2,19 @@ from flask import jsonify, request, g
 from app import app, db, limiter
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+import re
 import threading
 import os
 import jwt as pyjwt
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 from ranker import rank_items
+
+
+def _ensure_string(value, field_name='field'):
+    """Reject non-string values to prevent NoSQL operator injection from JSON bodies."""
+    if not isinstance(value, str):
+        raise ValueError(f'{field_name} must be a string')
+    return value
 
 
 # --- Auth decorators ---
@@ -89,7 +97,7 @@ def get_ranked_menu():
         date = request.args.get('date')
         dining_hall_ids = request.args.getlist('dining_hall_ids') or ['19', '51', '16']
 
-        # Accept user_id from JWT if present, fall back to query param for unauthenticated requests
+        # Accept user_id from JWT only — no query param fallback to prevent user_id enumeration
         auth = request.headers.get('Authorization', '')
         user_id = None
         if auth.startswith('Bearer '):
@@ -98,8 +106,6 @@ def get_ranked_menu():
                 user_id = payload['sub']
             except pyjwt.InvalidTokenError:
                 pass
-        if not user_id:
-            user_id = request.args.get('user_id')
 
         if not date:
             return jsonify({'success': False, 'error': 'date required'}), 400
@@ -233,9 +239,14 @@ def search_menu():
         search_query = request.args.get('q', '')
         if not search_query:
             return jsonify({'success': False, 'error': 'Search query required'}), 400
+        if len(search_query) > 100:
+            return jsonify({'success': False, 'error': 'Search query too long'}), 400
+
+        # Escape regex special chars to prevent ReDoS and operator injection
+        safe_query = re.escape(search_query)
 
         foods = list(db.foods.find(
-            {'name': {'$regex': search_query, '$options': 'i'}},
+            {'name': {'$regex': safe_query, '$options': 'i'}},
             {'_id': 0, 'embedding': 0}
         ).limit(50))
 
@@ -350,7 +361,7 @@ def auth_guest():
 def auth_apple():
     try:
         data = request.get_json()
-        apple_user_id = data.get('apple_user_id')
+        apple_user_id = _ensure_string(data.get('apple_user_id', ''), 'apple_user_id')
         if not apple_user_id:
             return jsonify({'success': False, 'error': 'apple_user_id required'}), 400
 
@@ -377,7 +388,7 @@ def upgrade_guest():
     """Upgrade a guest account to an Apple account, migrating all data."""
     try:
         data = request.get_json()
-        apple_user_id = data.get('apple_user_id')
+        apple_user_id = _ensure_string(data.get('apple_user_id', ''), 'apple_user_id')
         if not apple_user_id:
             return jsonify({'success': False, 'error': 'apple_user_id required'}), 400
 
@@ -441,8 +452,8 @@ def get_favorites():
 def add_favorite():
     try:
         data = request.get_json()
-        rec_num = data.get('rec_num')
-        name = data.get('name', '')
+        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
+        name = _ensure_string(data.get('name', ''), 'name')
         if not rec_num:
             return jsonify({'success': False, 'error': 'rec_num required'}), 400
 
@@ -460,7 +471,7 @@ def add_favorite():
 def remove_favorite():
     try:
         data = request.get_json()
-        rec_num = data.get('rec_num')
+        rec_num = _ensure_string(data.get('rec_num', ''), 'rec_num')
         if not rec_num:
             return jsonify({'success': False, 'error': 'rec_num required'}), 400
 
@@ -486,7 +497,7 @@ def get_station_favorites():
 def add_station_favorite():
     try:
         data = request.get_json()
-        station_name = data.get('station_name')
+        station_name = _ensure_string(data.get('station_name', ''), 'station_name')
         if not station_name:
             return jsonify({'success': False, 'error': 'station_name required'}), 400
 
@@ -504,7 +515,7 @@ def add_station_favorite():
 def remove_station_favorite():
     try:
         data = request.get_json()
-        station_name = data.get('station_name')
+        station_name = _ensure_string(data.get('station_name', ''), 'station_name')
         if not station_name:
             return jsonify({'success': False, 'error': 'station_name required'}), 400
 
@@ -532,14 +543,27 @@ def get_preferences():
 def update_preferences():
     try:
         data = request.get_json()
+        vegetarian = data.get('vegetarian', False)
+        vegan = data.get('vegan', False)
+        allergens = data.get('allergens', [])
+        cuisine_prefs = data.get('cuisine_prefs', [])
+
+        # Validate types to prevent operator injection
+        if not isinstance(vegetarian, bool) or not isinstance(vegan, bool):
+            return jsonify({'success': False, 'error': 'vegetarian and vegan must be booleans'}), 400
+        if not isinstance(allergens, list) or not all(isinstance(a, str) for a in allergens):
+            return jsonify({'success': False, 'error': 'allergens must be a list of strings'}), 400
+        if not isinstance(cuisine_prefs, list) or not all(isinstance(c, str) for c in cuisine_prefs):
+            return jsonify({'success': False, 'error': 'cuisine_prefs must be a list of strings'}), 400
+
         db.preferences.update_one(
             {'user_id': g.user_id},
             {'$set': {
                 'user_id': g.user_id,
-                'vegetarian': data.get('vegetarian', False),
-                'vegan': data.get('vegan', False),
-                'allergens': data.get('allergens', []),
-                'cuisine_prefs': data.get('cuisine_prefs', []),
+                'vegetarian': vegetarian,
+                'vegan': vegan,
+                'allergens': allergens,
+                'cuisine_prefs': cuisine_prefs,
             }},
             upsert=True
         )
