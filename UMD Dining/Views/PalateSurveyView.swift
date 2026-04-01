@@ -9,6 +9,7 @@ struct CuisineOption: Identifiable {
 
 struct PalateSurveyView: View {
     var onComplete: () -> Void
+    @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
 
     private let cuisines: [CuisineOption] = [
@@ -51,6 +52,7 @@ struct PalateSurveyView: View {
             Button {
                 UserPreferences.shared.cuisinePrefs = Array(selected)
                 onComplete()
+                dismiss()
             } label: {
                 Text("Continue")
                     .font(.headline)

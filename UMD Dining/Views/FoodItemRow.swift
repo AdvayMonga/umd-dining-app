@@ -77,7 +77,10 @@ struct FoodItemRow: View {
         case "vegetarian": return "VG"
         case "Contains dairy": return "Dairy"
         case "Contains egg": return "Egg"
+        case "Contains fish": return "Fish"
         case "Contains gluten": return "Gluten"
+        case "Contains shellfish": return "Shellfish"
+        case "Contains sesame": return "Sesame"
         case "Contains soy": return "Soy"
         default: return icon
         }

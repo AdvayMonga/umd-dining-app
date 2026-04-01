@@ -4,26 +4,14 @@ struct StationHeaderRow: View {
     let station: String
     let diningHallName: String
     let diningHallId: String
-    let isExpanded: Bool
-    let isDiscovery: Bool
     let items: [MenuItem]
     let selectedDate: Date
     let selectedMealPeriod: String
-    let onToggle: () -> Void
     @Environment(FavoritesManager.self) private var favorites
 
     var body: some View {
         HStack(spacing: 0) {
-            // Left: chevron toggle
-            Button { onToggle() } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .foregroundStyle(.white.opacity(0.85))
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 32, height: 40)
-            }
-            .buttonStyle(.plain)
-
-            // Middle: station name → navigates to StationPageView
+            // Station name → navigates to StationPageView
             NavigationLink {
                 StationPageView(
                     station: station,
@@ -63,7 +51,7 @@ struct StationHeaderRow: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
-        .padding(.leading, 6)
+        .padding(.leading, 12)
         .padding(.trailing, 4)
         .background(Color.umdRed)
         .clipShape(RoundedRectangle(cornerRadius: 12))

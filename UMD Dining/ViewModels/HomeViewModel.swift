@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 enum FeedRow: Identifiable {
     case stationHeader(station: String, diningHallId: String, isDiscovery: Bool)
@@ -44,9 +45,6 @@ class HomeViewModel {
     var filterHighProtein: Bool = false
     var filterAllergens: Set<String> = []
 
-    // Expansion state — reset on each load
-    private var userCollapsedStations: Set<String> = []
-    private var userExpandedDiscovery: Set<String> = []
     var showDiscovery: Bool = false
 
     // Snapshot of favorites at load time — keeps feed order stable until refresh
@@ -63,23 +61,6 @@ class HomeViewModel {
         }
     }
 
-    func toggleStationExpansion(station: String, hallId: String, isDiscovery: Bool) {
-        let key = "\(station)_\(hallId)"
-        if isDiscovery {
-            if userExpandedDiscovery.contains(key) { userExpandedDiscovery.remove(key) }
-            else { userExpandedDiscovery.insert(key) }
-        } else {
-            if userCollapsedStations.contains(key) { userCollapsedStations.remove(key) }
-            else { userCollapsedStations.insert(key) }
-        }
-    }
-
-    func isStationExpanded(station: String, hallId: String, isDiscovery: Bool) -> Bool {
-        let key = "\(station)_\(hallId)"
-        return isDiscovery
-            ? userExpandedDiscovery.contains(key)
-            : !userCollapsedStations.contains(key)
-    }
 
     var displayRows: [FeedRow] {
         // Full filters: meal + hall + dietary/allergen
@@ -159,32 +140,19 @@ class HomeViewModel {
         var rows: [FeedRow] = []
 
         for group in sortedRecommended {
-            let expanded = isStationExpanded(station: group.station, hallId: group.hallId, isDiscovery: false)
             rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: false))
-            if expanded {
-                let items: [MenuItem]
-                if loadedFavStations.contains(group.station) {
-                    // Favorited: show ALL items from this station (no cap)
-                    items = filtered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
-                } else {
-                    items = group.items
-                }
-                items.forEach { rows.append(.menuItem($0)) }
-            }
+            let allStationItems = filtered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
+            let cap = loadedFavStations.contains(group.station) ? 6 : 4
+            let items = Array(allStationItems.prefix(cap))
+            items.forEach { rows.append(.menuItem($0)) }
         }
 
         if !discoveryGroups.isEmpty {
             if showDiscovery {
                 for group in discoveryGroups {
-                    let expanded = isStationExpanded(station: group.station, hallId: group.hallId, isDiscovery: true)
                     rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: true))
-                    if expanded {
-                        // 3 items from minimalFiltered — ignores dietary filters, backend already shuffled
-                        minimalFiltered
-                            .filter { $0.station == group.station && $0.diningHallId == group.hallId }
-                            .prefix(3)
-                            .forEach { rows.append(.menuItem($0)) }
-                    }
+                    let discoveryItems = minimalFiltered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
+                    Array(discoveryItems.prefix(3)).forEach { rows.append(.menuItem($0)) }
                 }
             } else {
                 rows.append(.seeMore)
@@ -238,8 +206,6 @@ class HomeViewModel {
         isLoading = true
         errorMessage = nil
         allItems = []
-        userCollapsedStations = []
-        userExpandedDiscovery = []
         showDiscovery = false
 
         // Sync temp filters from saved profile preferences

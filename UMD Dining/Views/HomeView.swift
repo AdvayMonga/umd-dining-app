@@ -64,7 +64,12 @@ struct HomeView: View {
             .presentationDetents([.large])
         }
         .fullScreenCover(isPresented: $showSearch) {
-            SearchOverlay()
+            SearchOverlay(
+                menuItems: viewModel.allItems,
+                hallNames: viewModel.diningHallNames,
+                selectedDate: viewModel.selectedDate,
+                selectedMealPeriod: viewModel.selectedMealPeriod
+            )
         }
     }
 
@@ -126,21 +131,20 @@ struct HomeView: View {
                 LazyVStack(spacing: 8) {
                     ForEach(viewModel.displayRows) { row in
                         switch row {
-                        case .stationHeader(let station, let hallId, let isDiscovery):
+                        case .stationHeader(let station, let hallId, _):
                             StationHeaderRow(
                                 station: station,
                                 diningHallName: viewModel.diningHallName(for: hallId),
                                 diningHallId: hallId,
-                                isExpanded: viewModel.isStationExpanded(station: station, hallId: hallId, isDiscovery: isDiscovery),
-                                isDiscovery: isDiscovery,
                                 items: viewModel.itemsForStation(station: station, hallId: hallId),
                                 selectedDate: viewModel.selectedDate,
-                                selectedMealPeriod: viewModel.selectedMealPeriod,
-                                onToggle: { viewModel.toggleStationExpansion(station: station, hallId: hallId, isDiscovery: isDiscovery) }
+                                selectedMealPeriod: viewModel.selectedMealPeriod
                             )
                         case .seeMore:
                             Button {
-                                viewModel.showDiscovery = true
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    viewModel.showDiscovery = true
+                                }
                             } label: {
                                 Text("See More Stations")
                                     .font(.subheadline)
@@ -161,6 +165,7 @@ struct HomeView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                 }
