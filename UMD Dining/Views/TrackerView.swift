@@ -36,6 +36,10 @@ struct TrackerView: View {
         Calendar.current.isDateInToday(selectedDate)
     }
 
+    private var proteinMet: Bool { tracker.proteinGoal > 0 && Int(totalProtein) >= tracker.proteinGoal }
+    private var carbsMet: Bool { tracker.carbsGoal > 0 && Int(totalCarbs) >= tracker.carbsGoal }
+    private var fatMet: Bool { tracker.fatGoal > 0 && Int(totalFat) >= tracker.fatGoal }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -49,10 +53,20 @@ struct TrackerView: View {
             .navigationTitle("Tracker")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         NavigationLink(destination: GoalsView()) {
-                            Image(systemName: "target")
-                                .foregroundStyle(Color.umdRed)
+                            HStack(spacing: 4) {
+                                Image(systemName: "target")
+                                    .font(.caption)
+                                Text("Set Goals")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundStyle(Color.umdRed)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.umdRed.opacity(0.12))
+                            .clipShape(Capsule())
                         }
                         DatePicker("", selection: $selectedDate, displayedComponents: .date)
                             .labelsHidden()
@@ -78,7 +92,6 @@ struct TrackerView: View {
             VStack(spacing: 16) {
                 dateSelector
                 calorieRingCard
-                macroSummaryCard
                 macroBarCard
                 loggedItemsSection
                 Spacer().frame(height: 40)
@@ -146,169 +159,150 @@ struct TrackerView: View {
         return formatter.string(from: selectedDate)
     }
 
-    // MARK: - Calorie Ring
+    // MARK: - Calorie Ring (Full Width)
 
     private var calorieRingCard: some View {
-        VStack(spacing: 8) {
-            Text("Calories")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
+        ZStack {
+            Chart {
+                SectorMark(
+                    angle: .value("Consumed", min(totalCalories, calorieGoal)),
+                    innerRadius: .ratio(0.7),
+                    angularInset: 2
+                )
+                .foregroundStyle(Color.umdRed)
+                .cornerRadius(4)
 
-            ZStack {
-                Chart {
-                    SectorMark(
-                        angle: .value("Consumed", min(totalCalories, calorieGoal)),
-                        innerRadius: .ratio(0.7),
-                        angularInset: 2
-                    )
-                    .foregroundStyle(Color.umdRed)
-                    .cornerRadius(4)
-
-                    SectorMark(
-                        angle: .value("Remaining", max(0, calorieGoal - totalCalories)),
-                        innerRadius: .ratio(0.7),
-                        angularInset: 2
-                    )
-                    .foregroundStyle(Color.gray.opacity(0.15))
-                    .cornerRadius(4)
-                }
-                .frame(height: 200)
-                .animation(.easeInOut(duration: 0.5), value: totalCalories)
-
-                VStack(spacing: 2) {
-                    Text("\(totalCalories)")
-                        .font(.system(size: 40, weight: .bold))
-                        .foregroundStyle(Color.umdRed)
-                    Text("/ \(calorieGoal) cal")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                SectorMark(
+                    angle: .value("Remaining", max(0, calorieGoal - totalCalories)),
+                    innerRadius: .ratio(0.7),
+                    angularInset: 2
+                )
+                .foregroundStyle(Color.gray.opacity(0.15))
+                .cornerRadius(4)
             }
-            .padding()
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
-        }
-    }
+            .frame(height: 220)
+            .animation(.easeInOut(duration: 0.5), value: totalCalories)
 
-    // MARK: - Macro Summary Pills
-
-    private var macroSummaryCard: some View {
-        HStack(spacing: 10) {
-            macroPill(label: "Protein", consumed: Int(totalProtein), goal: tracker.proteinGoal, color: .blue)
-            macroPill(label: "Carbs", consumed: Int(totalCarbs), goal: tracker.carbsGoal, color: .green)
-            macroPill(label: "Fat", consumed: Int(totalFat), goal: tracker.fatGoal, color: .orange)
-        }
-    }
-
-    private func macroPill(label: String, consumed: Int, goal: Int, color: Color) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 0) {
-                Text("\(consumed)")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundStyle(color)
-                Text(" / \(goal)g")
-                    .font(.caption)
+            VStack(spacing: 2) {
+                Text("\(totalCalories)")
+                    .font(.system(size: 42, weight: .bold))
+                    .foregroundStyle(Color.umdRed)
+                Text("/ \(calorieGoal) cal")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(color.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
     }
 
-    // MARK: - Macro Bar Chart (Vertical with Goal Lines)
+    // MARK: - Macro Bar Chart (Vertical with Background Goal Bars + Stars)
 
     private var macroBarCard: some View {
-        VStack(spacing: 8) {
-            Text("Macros")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
-
-            VStack(spacing: 12) {
-                Chart {
-                    // Protein
-                    BarMark(x: .value("Macro", "Protein"), y: .value("Grams", totalProtein))
-                        .foregroundStyle(.blue)
+        VStack(spacing: 12) {
+            Chart {
+                // Background goal bars (translucent)
+                if tracker.proteinGoal > 0 {
+                    BarMark(x: .value("Macro", "Protein"), y: .value("Grams", tracker.proteinGoal))
+                        .foregroundStyle(.blue.opacity(0.15))
                         .cornerRadius(6)
-                        .annotation(position: .top) {
-                            Text("\(Int(totalProtein))g")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.blue)
-                        }
-                    if tracker.proteinGoal > 0 {
-                        RuleMark(y: .value("Goal", tracker.proteinGoal))
-                            .foregroundStyle(.blue.opacity(0.5))
-                            .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                    }
-
-                    // Carbs
-                    BarMark(x: .value("Macro", "Carbs"), y: .value("Grams", totalCarbs))
-                        .foregroundStyle(.green)
+                }
+                if tracker.carbsGoal > 0 {
+                    BarMark(x: .value("Macro", "Carbs"), y: .value("Grams", tracker.carbsGoal))
+                        .foregroundStyle(.green.opacity(0.15))
                         .cornerRadius(6)
-                        .annotation(position: .top) {
-                            Text("\(Int(totalCarbs))g")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.green)
-                        }
-                    if tracker.carbsGoal > 0 {
-                        RuleMark(y: .value("Goal", tracker.carbsGoal))
-                            .foregroundStyle(.green.opacity(0.5))
-                            .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                }
+                if tracker.fatGoal > 0 {
+                    BarMark(x: .value("Macro", "Fat"), y: .value("Grams", tracker.fatGoal))
+                        .foregroundStyle(.orange.opacity(0.15))
+                        .cornerRadius(6)
+                }
+
+                // Consumed bars (solid, on top)
+                BarMark(x: .value("Macro", "Protein"), y: .value("Grams", totalProtein))
+                    .foregroundStyle(.blue)
+                    .cornerRadius(6)
+                    .annotation(position: .top) {
+                        Text("\(Int(totalProtein))g")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.blue)
                     }
 
-                    // Fat
-                    BarMark(x: .value("Macro", "Fat"), y: .value("Grams", totalFat))
-                        .foregroundStyle(.orange)
-                        .cornerRadius(6)
-                        .annotation(position: .top) {
-                            Text("\(Int(totalFat))g")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.orange)
-                        }
-                    if tracker.fatGoal > 0 {
-                        RuleMark(y: .value("Goal", tracker.fatGoal))
-                            .foregroundStyle(.orange.opacity(0.5))
-                            .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                BarMark(x: .value("Macro", "Carbs"), y: .value("Grams", totalCarbs))
+                    .foregroundStyle(.green)
+                    .cornerRadius(6)
+                    .annotation(position: .top) {
+                        Text("\(Int(totalCarbs))g")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.green)
                     }
-                }
-                .chartXAxis {
-                    AxisMarks { _ in
-                        AxisValueLabel()
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
+
+                BarMark(x: .value("Macro", "Fat"), y: .value("Grams", totalFat))
+                    .foregroundStyle(.orange)
+                    .cornerRadius(6)
+                    .annotation(position: .top) {
+                        Text("\(Int(totalFat))g")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.orange)
                     }
-                }
-                .chartYAxis {
-                    AxisMarks { _ in
-                        AxisGridLine()
-                        AxisValueLabel()
-                            .font(.caption)
-                    }
-                }
-                .frame(height: 200)
-                .animation(.easeInOut(duration: 0.5), value: totalProtein)
-                .animation(.easeInOut(duration: 0.5), value: totalCarbs)
-                .animation(.easeInOut(duration: 0.5), value: totalFat)
             }
-            .padding()
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+            .chartXAxis {
+                AxisMarks { value in
+                    AxisValueLabel {
+                        if let label = value.as(String.self) {
+                            HStack(spacing: 2) {
+                                if goalMet(for: label) {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(macroColor(for: label))
+                                }
+                                Text(label)
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(macroColor(for: label))
+                            }
+                        }
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisGridLine()
+                    AxisValueLabel()
+                        .font(.caption)
+                }
+            }
+            .frame(height: 200)
+            .animation(.easeInOut(duration: 0.5), value: totalProtein)
+            .animation(.easeInOut(duration: 0.5), value: totalCarbs)
+            .animation(.easeInOut(duration: 0.5), value: totalFat)
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+    }
+
+    private func macroColor(for label: String) -> Color {
+        switch label {
+        case "Protein": return .blue
+        case "Carbs":   return .green
+        case "Fat":     return .orange
+        default:        return .primary
+        }
+    }
+
+    private func goalMet(for label: String) -> Bool {
+        switch label {
+        case "Protein": return proteinMet
+        case "Carbs":   return carbsMet
+        case "Fat":     return fatMet
+        default:        return false
         }
     }
 

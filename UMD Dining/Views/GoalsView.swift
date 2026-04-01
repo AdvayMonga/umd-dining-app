@@ -4,7 +4,7 @@ struct GoalsView: View {
     @Environment(NutritionTrackerManager.self) private var tracker
 
     private let calorieOptions: [Int] = Array(stride(from: 1000, through: 5000, by: 50))
-    private let macroOptions: [Int] = Array(stride(from: 0, through: 500, by: 5))
+    @State private var showCaloriePicker = false
 
     var body: some View {
         ScrollView {
@@ -83,21 +83,40 @@ struct GoalsView: View {
                 .padding(.horizontal, 4)
 
             VStack(spacing: 4) {
-                Text("\(tracker.calorieGoalSetting)")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(Color.umdRed)
+                // Tap the number to toggle the picker
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showCaloriePicker.toggle()
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Text("\(tracker.calorieGoalSetting)")
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundStyle(Color.umdRed)
 
-                Picker("Calories", selection: $tracker.calorieGoalSetting) {
-                    ForEach(calorieOptions, id: \.self) { cal in
-                        Text("\(cal)").tag(cal)
+                        Text("calories per day")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if !showCaloriePicker {
+                            Text("Tap to adjust")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
-                .pickerStyle(.wheel)
-                .frame(height: 120)
+                .buttonStyle(.plain)
 
-                Text("calories per day")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if showCaloriePicker {
+                    Picker("Calories", selection: $tracker.calorieGoalSetting) {
+                        ForEach(calorieOptions, id: \.self) { cal in
+                            Text("\(cal)").tag(cal)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(height: 120)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
             .padding()
             .background(Color(.systemBackground))
@@ -130,9 +149,9 @@ struct GoalsView: View {
                 }
 
                 if tracker.hasCustomMacros {
-                    macroPickerRow(label: "Protein", value: $tracker.proteinGoal, color: .blue)
-                    macroPickerRow(label: "Carbs", value: $tracker.carbsGoal, color: .green)
-                    macroPickerRow(label: "Fat", value: $tracker.fatGoal, color: .orange)
+                    macroSliderRow(label: "Protein", value: $tracker.proteinGoal, color: .blue)
+                    macroSliderRow(label: "Carbs", value: $tracker.carbsGoal, color: .green)
+                    macroSliderRow(label: "Fat", value: $tracker.fatGoal, color: .orange)
                 } else {
                     macroDisplayRow(label: "Protein", value: tracker.proteinGoal, color: .blue)
                     macroDisplayRow(label: "Carbs", value: tracker.carbsGoal, color: .green)
@@ -172,8 +191,8 @@ struct GoalsView: View {
         .buttonStyle(.plain)
     }
 
-    private func macroPickerRow(label: String, value: Binding<Int>, color: Color) -> some View {
-        VStack(spacing: 2) {
+    private func macroSliderRow(label: String, value: Binding<Int>, color: Color) -> some View {
+        VStack(spacing: 8) {
             HStack {
                 Text(label)
                     .font(.subheadline)
@@ -186,13 +205,15 @@ struct GoalsView: View {
                     .foregroundStyle(color)
             }
 
-            Picker(label, selection: value) {
-                ForEach(macroOptions, id: \.self) { g in
-                    Text("\(g)g").tag(g)
-                }
-            }
-            .pickerStyle(.wheel)
-            .frame(height: 100)
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: { value.wrappedValue = Int(($0 / 5).rounded() * 5) }
+                ),
+                in: 0...500,
+                step: 5
+            )
+            .tint(color)
         }
         .padding(.vertical, 4)
     }
