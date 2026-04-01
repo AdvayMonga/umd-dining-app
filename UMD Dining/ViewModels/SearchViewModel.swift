@@ -57,10 +57,15 @@ class SearchViewModel {
             hasSearched = true
             do {
                 results = try await DiningAPIService.shared.searchFoods(query: trimmed)
+                errorMessage = nil
             } catch is CancellationError {
                 // Ignore cancellation
+            } catch let error as URLError where error.code == .cancelled {
+                // Ignore cancelled network requests (from debounce)
             } catch {
-                errorMessage = error.localizedDescription
+                if !Task.isCancelled {
+                    errorMessage = error.localizedDescription
+                }
             }
             isLoading = false
         }

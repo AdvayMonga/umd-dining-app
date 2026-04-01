@@ -1,9 +1,19 @@
+import SwiftData
 import SwiftUI
 
 struct FoodItemRow: View {
     let item: MenuItem
     let diningHallName: String
     @Environment(FavoritesManager.self) private var favorites
+    @Environment(NutritionTrackerManager.self) private var tracker
+    @Environment(\.modelContext) private var modelContext
+    @State private var isAdding = false
+    @State private var showAdded = false
+    @State private var showServingPicker = false
+    @State private var servingCount: Double = 1.0
+    @State private var pendingNutrition: [String: String]?
+
+    private let servingOptions: [Double] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
 
     var body: some View {
         HStack(spacing: 12) {
@@ -44,6 +54,26 @@ struct FoodItemRow: View {
 
             Spacer()
 
+            // Add to tracker button
+            Button {
+                guard !isAdding && !showAdded else { return }
+                Task { await fetchAndShowPicker() }
+            } label: {
+                if isAdding {
+                    ProgressView()
+                        .frame(width: 20, height: 20)
+                } else if showAdded {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.title3)
+                } else {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(Color.umdRed)
+                        .font(.title3)
+                }
+            }
+            .buttonStyle(.plain)
+
             Button {
                 favorites.toggleFood(recNum: item.recNum, name: item.name)
             } label: {
@@ -59,6 +89,64 @@ struct FoodItemRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
         .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
+        .sheet(isPresented: $showServingPicker, onDismiss: { servingCount = 1.0 }) {
+            if let nutrition = pendingNutrition {
+                ServingPickerSheet(
+                    foodName: item.name,
+                    nutrition: nutrition,
+                    servingCount: $servingCount,
+                    servingOptions: servingOptions,
+                    onLog: {
+                        tracker.setModelContext(modelContext)
+                        tracker.addEntry(name: item.name, recNum: item.recNum, nutrition: nutrition,
+                                         mealPeriod: item.mealPeriod, diningHall: diningHallName,
+                                         servingMultiplier: servingCount)
+                        showServingPicker = false
+                        Task {
+                            withAnimation(.spring(duration: 0.3)) { showAdded = true }
+                            try? await Task.sleep(for: .seconds(1.5))
+                            withAnimation { showAdded = false }
+                        }
+                    },
+                    onCancel: { showServingPicker = false }
+                )
+                .presentationDetents([.height(420)])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    private func fetchAndShowPicker() async {
+        isAdding = true
+
+        var nutrition: [String: String]?
+
+        if let n = item.nutrition, !n.isEmpty {
+            nutrition = n
+        } else {
+            if let cached = await NutritionCache.shared.get(item.recNum) {
+                nutrition = cached.nutrition
+            } else {
+                do {
+                    let info = try await DiningAPIService.shared.fetchNutrition(recNum: item.recNum)
+                    await NutritionCache.shared.set(item.recNum, info)
+                    nutrition = info.nutrition
+                } catch {
+                    isAdding = false
+                    return
+                }
+            }
+        }
+
+        guard let nutrition, !nutrition.isEmpty else {
+            isAdding = false
+            return
+        }
+
+        isAdding = false
+        servingCount = 1.0
+        pendingNutrition = nutrition
+        showServingPicker = true
     }
 
     private func tagColor(for tag: String) -> Color {
@@ -94,6 +182,134 @@ struct FoodItemRow: View {
     }
 }
 
+// MARK: - Serving Picker Sheet
+
+struct ServingPickerSheet: View {
+    let foodName: String
+    let nutrition: [String: String]
+    @Binding var servingCount: Double
+    let servingOptions: [Double]
+    let onLog: () -> Void
+    let onCancel: () -> Void
+
+    private var servingSize: String? {
+        nutritionValue("Serving Size", from: nutrition)
+    }
+
+    private var previewCalories: Int {
+        Int(TrackedEntry.parseNumeric(nutritionValue("Calories", from: nutrition)) * servingCount)
+    }
+
+    private var previewProtein: Int {
+        Int(TrackedEntry.parseNumeric(nutritionValue("Protein", from: nutrition)) * servingCount)
+    }
+
+    private var previewCarbs: Int {
+        Int(TrackedEntry.parseNumeric(nutritionValue("Total Carbohydrate", from: nutrition)) * servingCount)
+    }
+
+    private var previewFat: Int {
+        Int(TrackedEntry.parseNumeric(nutritionValue("Total Fat", from: nutrition)) * servingCount)
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Header
+            Text("Log Food")
+                .font(.title3)
+                .fontWeight(.bold)
+
+            // Food info
+            VStack(spacing: 4) {
+                Text(foodName)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+
+                if let size = servingSize {
+                    Text("Serving Size: \(size)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Wheel picker
+            VStack(spacing: 2) {
+                Picker("Servings", selection: $servingCount) {
+                    ForEach(servingOptions, id: \.self) { option in
+                        Text(option.truncatingRemainder(dividingBy: 1) == 0
+                             ? "\(Int(option))"
+                             : String(format: "%.1f", option))
+                            .tag(option)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 120)
+
+                Text("servings")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Macro preview
+            HStack(spacing: 8) {
+                macroPill("\(previewCalories) cal", color: Color.umdRed)
+                macroPill("\(previewProtein)g P", color: .blue)
+                macroPill("\(previewCarbs)g C", color: .green)
+                macroPill("\(previewFat)g F", color: .orange)
+            }
+
+            // Buttons
+            HStack(spacing: 12) {
+                Button {
+                    onCancel()
+                } label: {
+                    Text("Cancel")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color(.systemGray5))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    onLog()
+                } label: {
+                    Text("Log")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.umdRed)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(24)
+    }
+
+    private func macroPill(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
+    private func nutritionValue(_ key: String, from nutrition: [String: String]) -> String? {
+        if let v = nutrition[key] { return v }
+        let normalized = key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return nutrition.first(where: {
+            $0.key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == normalized
+        })?.value
+    }
+}
+
 #Preview {
     FoodItemRow(
         item: MenuItem(
@@ -113,4 +329,6 @@ struct FoodItemRow: View {
         diningHallName: "Yahentamitsi Dining Hall"
     )
     .environment(FavoritesManager.shared)
+    .environment(NutritionTrackerManager.shared)
+    .modelContainer(for: [DailyLog.self, TrackedEntry.self])
 }

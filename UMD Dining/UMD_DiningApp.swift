@@ -1,10 +1,12 @@
 import AuthenticationServices
+import SwiftData
 import SwiftUI
 
 @main
 struct UMD_DiningApp: App {
     @State private var authManager = AuthManager.shared
     @State private var favoritesManager = FavoritesManager.shared
+    @State private var trackerManager = NutritionTrackerManager.shared
     @AppStorage("isDarkMode") private var isDarkMode = true
     @AppStorage("hasCompletedPalateSurvey") private var hasCompletedSurvey = false
 
@@ -21,6 +23,7 @@ struct UMD_DiningApp: App {
                         .preferredColorScheme(isDarkMode ? .dark : .light)
                         .environment(authManager)
                         .environment(favoritesManager)
+                        .environment(trackerManager)
                         .task {
                             await authManager.checkAppleCredentialState()
                             await authManager.refreshTokenIfNeeded()
@@ -39,5 +42,6 @@ struct UMD_DiningApp: App {
                     .environment(authManager)
             }
         }
+        .modelContainer(for: [DailyLog.self, TrackedEntry.self])
     }
 }

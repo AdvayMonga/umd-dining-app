@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct HomeView: View {
@@ -182,4 +183,6 @@ struct HomeView: View {
 #Preview {
     HomeView()
         .environment(FavoritesManager.shared)
+        .environment(NutritionTrackerManager.shared)
+        .modelContainer(for: [DailyLog.self, TrackedEntry.self])
 }

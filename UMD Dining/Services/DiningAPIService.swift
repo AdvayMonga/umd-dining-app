@@ -263,6 +263,42 @@ actor DiningAPIService {
         }
     }
 
+    // MARK: - Intake Tracking (auth required)
+
+    func logIntake(recNum: String, name: String, date: String, mealPeriod: String?,
+                   calories: Int, proteinG: Double, carbsG: Double, fatG: Double) async throws {
+        let token = await AuthManager.shared.jwtToken
+        guard let url = URL(string: "\(baseURL)/intake") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let t = token {
+            request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
+        }
+        let body: [String: Any] = [
+            "rec_num": recNum,
+            "name": name,
+            "date": date,
+            "meal_period": mealPeriod ?? "",
+            "calories": calories,
+            "protein_g": proteinG,
+            "carbs_g": carbsG,
+            "fat_g": fatG,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 { await handleUnauthorized(); throw APIError.unauthorized }
+            if !(200...299).contains(http.statusCode) { throw APIError.serverError(http.statusCode) }
+        }
+    }
+
+    func removeIntake(recNum: String, date: String, loggedAt: String) async throws {
+        let token = await AuthManager.shared.jwtToken
+        let body = ["rec_num": recNum, "date": date, "logged_at": loggedAt]
+        _ = try await delete("\(baseURL)/intake", body: body, token: token)
+    }
+
     // MARK: - Networking
 
     private func fetch(_ urlString: String, token: String? = nil) async throws -> Data {
@@ -280,6 +316,8 @@ actor DiningAPIService {
             return data
         } catch let error as APIError {
             throw error
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         } catch let error as DecodingError {
             throw APIError.decodingError(error)
         } catch {
