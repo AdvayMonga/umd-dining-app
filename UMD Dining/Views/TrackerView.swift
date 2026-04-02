@@ -3,14 +3,15 @@ import SwiftData
 import SwiftUI
 
 struct TrackerView: View {
+    @Binding var tabSelection: Int
+    let myTab: Int
     @Environment(NutritionTrackerManager.self) private var tracker
     @Environment(\.modelContext) private var modelContext
     @State private var selectedDate = Date()
     @State private var showClearConfirm = false
-
-    private var entries: [TrackedEntry] {
-        tracker.entries(for: selectedDate)
-    }
+    @State private var animateCharts = false
+    @State private var entries: [TrackedEntry] = []
+    @State private var scrollProxy: ScrollViewProxy?
 
     private var totalCalories: Int {
         entries.reduce(0) { $0 + $1.calories }
@@ -68,8 +69,7 @@ struct TrackerView: View {
                             .background(Color.umdRed.opacity(0.12))
                             .clipShape(Capsule())
                         }
-                        DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                            .labelsHidden()
+                        CalendarCardButton(selection: $selectedDate)
                     }
                 }
             }
@@ -82,22 +82,45 @@ struct TrackerView: View {
         .onAppear {
             tracker.setModelContext(modelContext)
             selectedDate = Date()
+            loadEntries()
+            animateCharts = false
+            withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
+                animateCharts = true
+            }
+        }
+        .onChange(of: selectedDate) {
+            loadEntries()
+        }
+        .onChange(of: tabSelection) {
+            if tabSelection == myTab {
+                selectedDate = Date()
+                loadEntries()
+                withAnimation { scrollProxy?.scrollTo("trackerTop", anchor: .top) }
+                animateCharts = false
+                withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
+                    animateCharts = true
+                }
+            }
         }
     }
 
     // MARK: - Content
 
     private var trackerContent: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                dateSelector
-                calorieRingCard
-                macroBarCard
-                loggedItemsSection
-                Spacer().frame(height: 40)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 16) {
+                    Color.clear.frame(height: 0).id("trackerTop")
+                    dateSelector
+                    calorieRingCard
+                    macroBarCard
+                    loggedItemsSection
+                    Spacer().frame(height: 40)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .onAppear { scrollProxy = proxy }
         }
     }
 
@@ -161,11 +184,15 @@ struct TrackerView: View {
 
     // MARK: - Calorie Ring (Full Width)
 
+    private var displayCalories: Int {
+        animateCharts ? totalCalories : 0
+    }
+
     private var calorieRingCard: some View {
         ZStack {
             Chart {
                 SectorMark(
-                    angle: .value("Consumed", min(totalCalories, calorieGoal)),
+                    angle: .value("Consumed", min(displayCalories, calorieGoal)),
                     innerRadius: .ratio(0.7),
                     angularInset: 2
                 )
@@ -173,7 +200,7 @@ struct TrackerView: View {
                 .cornerRadius(4)
 
                 SectorMark(
-                    angle: .value("Remaining", max(0, calorieGoal - totalCalories)),
+                    angle: .value("Remaining", max(0, calorieGoal - displayCalories)),
                     innerRadius: .ratio(0.7),
                     angularInset: 2
                 )
@@ -181,7 +208,7 @@ struct TrackerView: View {
                 .cornerRadius(4)
             }
             .frame(height: 220)
-            .animation(.easeInOut(duration: 0.5), value: totalCalories)
+            .animation(.easeOut(duration: 0.8), value: displayCalories)
 
             VStack(spacing: 2) {
                 Text("\(totalCalories)")
@@ -198,89 +225,22 @@ struct TrackerView: View {
         .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
     }
 
-    // MARK: - Macro Bar Chart (Vertical with Background Goal Bars + Stars)
+    // MARK: - Macro Bar Chart (Vertical, bottom-up fill with goal)
 
     private var macroBarCard: some View {
         VStack(spacing: 12) {
-            Chart {
-                // Background goal bars (translucent)
-                if tracker.proteinGoal > 0 {
-                    BarMark(x: .value("Macro", "Protein"), y: .value("Grams", tracker.proteinGoal))
-                        .foregroundStyle(.blue.opacity(0.15))
-                        .cornerRadius(6)
-                }
-                if tracker.carbsGoal > 0 {
-                    BarMark(x: .value("Macro", "Carbs"), y: .value("Grams", tracker.carbsGoal))
-                        .foregroundStyle(.green.opacity(0.15))
-                        .cornerRadius(6)
-                }
-                if tracker.fatGoal > 0 {
-                    BarMark(x: .value("Macro", "Fat"), y: .value("Grams", tracker.fatGoal))
-                        .foregroundStyle(.orange.opacity(0.15))
-                        .cornerRadius(6)
-                }
-
-                // Consumed bars (solid, on top)
-                BarMark(x: .value("Macro", "Protein"), y: .value("Grams", totalProtein))
-                    .foregroundStyle(.blue)
-                    .cornerRadius(6)
-                    .annotation(position: .top) {
-                        Text("\(Int(totalProtein))g")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.blue)
-                    }
-
-                BarMark(x: .value("Macro", "Carbs"), y: .value("Grams", totalCarbs))
-                    .foregroundStyle(.green)
-                    .cornerRadius(6)
-                    .annotation(position: .top) {
-                        Text("\(Int(totalCarbs))g")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.green)
-                    }
-
-                BarMark(x: .value("Macro", "Fat"), y: .value("Grams", totalFat))
-                    .foregroundStyle(.orange)
-                    .cornerRadius(6)
-                    .annotation(position: .top) {
-                        Text("\(Int(totalFat))g")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.orange)
-                    }
-            }
-            .chartXAxis {
-                AxisMarks { value in
-                    AxisValueLabel {
-                        if let label = value.as(String.self) {
-                            HStack(spacing: 2) {
-                                if goalMet(for: label) {
-                                    Image(systemName: "star.fill")
-                                        .font(.system(size: 8))
-                                        .foregroundStyle(macroColor(for: label))
-                                }
-                                Text(label)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(macroColor(for: label))
-                            }
-                        }
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks { _ in
-                    AxisGridLine()
-                    AxisValueLabel()
-                        .font(.caption)
-                }
+            HStack(alignment: .bottom, spacing: 16) {
+                macroBar(label: "Protein", consumed: animateCharts ? totalProtein : 0, goal: Double(tracker.proteinGoal), color: .blue, met: proteinMet && animateCharts)
+                macroBar(label: "Carbs", consumed: animateCharts ? totalCarbs : 0, goal: Double(tracker.carbsGoal), color: .green, met: carbsMet && animateCharts)
+                macroBar(label: "Fat", consumed: animateCharts ? totalFat : 0, goal: Double(tracker.fatGoal), color: .orange, met: fatMet && animateCharts)
             }
             .frame(height: 200)
             .animation(.easeInOut(duration: 0.5), value: totalProtein)
             .animation(.easeInOut(duration: 0.5), value: totalCarbs)
             .animation(.easeInOut(duration: 0.5), value: totalFat)
+            .animation(.easeInOut(duration: 0.5), value: tracker.proteinGoal)
+            .animation(.easeInOut(duration: 0.5), value: tracker.carbsGoal)
+            .animation(.easeInOut(duration: 0.5), value: tracker.fatGoal)
         }
         .padding()
         .background(Color(.systemBackground))
@@ -288,22 +248,59 @@ struct TrackerView: View {
         .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
     }
 
-    private func macroColor(for label: String) -> Color {
-        switch label {
-        case "Protein": return .blue
-        case "Carbs":   return .green
-        case "Fat":     return .orange
-        default:        return .primary
-        }
-    }
+    private func macroBar(label: String, consumed: Double, goal: Double, color: Color, met: Bool) -> some View {
+        let maxVal = max(goal, consumed, 1)
+        let goalRatio = goal > 0 ? goal / maxVal : 0
+        let consumedRatio = consumed / maxVal
 
-    private func goalMet(for label: String) -> Bool {
-        switch label {
-        case "Protein": return proteinMet
-        case "Carbs":   return carbsMet
-        case "Fat":     return fatMet
-        default:        return false
+        return VStack(spacing: 6) {
+            // Goal on top
+            if goal > 0 {
+                Text("\(Int(goal))g")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(color.opacity(0.5))
+            }
+
+            // Bar
+            GeometryReader { geo in
+                ZStack(alignment: .bottom) {
+                    // Goal background (full translucent bar)
+                    if goal > 0 {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(color.opacity(0.12))
+                            .frame(height: geo.size.height * goalRatio)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                    }
+
+                    // Consumed fill (solid, bottom-up)
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(color)
+                        .frame(height: geo.size.height * min(consumedRatio, 1.0))
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+
+            // Consumed amount at bottom
+            Text("\(Int(consumed))g")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(color)
+
+            // Label + star
+            HStack(spacing: 2) {
+                if met {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(color)
+                }
+                Text(label)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(color)
+            }
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Logged Items
@@ -312,7 +309,7 @@ struct TrackerView: View {
         VStack(spacing: 8) {
             HStack {
                 Text("Logged Items")
-                    .font(.subheadline)
+                    .font(.callout)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -369,6 +366,7 @@ struct TrackerView: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 6) {
+                    macroLabel("\(entry.calories) cal", color: Color.umdRed)
                     macroLabel("\(Int(entry.proteinG))g P", color: .blue)
                     macroLabel("\(Int(entry.carbsG))g C", color: .green)
                     macroLabel("\(Int(entry.fatG))g F", color: .orange)
@@ -377,22 +375,12 @@ struct TrackerView: View {
 
             Spacer()
 
-            Text("\(entry.calories)")
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundStyle(Color.umdRed)
-
-            Text("cal")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
             Button {
-                tracker.setModelContext(modelContext)
-                withAnimation { tracker.removeEntry(entry) }
+                removeEntry(entry)
             } label: {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red.opacity(0.7))
-                    .font(.body)
+                Image(systemName: "minus.circle")
+                    .foregroundStyle(Color.umdRed)
+                    .font(.title3)
             }
             .buttonStyle(.plain)
         }
@@ -402,6 +390,10 @@ struct TrackerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
         .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
+        .transition(.asymmetric(
+            insertion: .opacity,
+            removal: .opacity.combined(with: .slide)
+        ))
     }
 
     private func macroLabel(_ text: String, color: Color) -> some View {
@@ -434,8 +426,7 @@ struct TrackerView: View {
 
                 Button {
                     showClearConfirm = false
-                    tracker.setModelContext(modelContext)
-                    withAnimation { tracker.clearDay(selectedDate) }
+                    clearAllEntries()
                 } label: {
                     Text("Clear All")
                         .font(.headline)
@@ -464,6 +455,26 @@ struct TrackerView: View {
 
     // MARK: - Helpers
 
+    private func loadEntries() {
+        entries = tracker.entries(for: selectedDate)
+    }
+
+    private func removeEntry(_ entry: TrackedEntry) {
+        tracker.setModelContext(modelContext)
+        tracker.removeEntry(entry)
+        withAnimation(.easeInOut(duration: 0.35)) {
+            entries.removeAll { $0.id == entry.id }
+        }
+    }
+
+    private func clearAllEntries() {
+        tracker.setModelContext(modelContext)
+        tracker.clearDay(selectedDate)
+        withAnimation(.easeInOut(duration: 0.35)) {
+            entries.removeAll()
+        }
+    }
+
     private func timeString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
@@ -472,7 +483,7 @@ struct TrackerView: View {
 }
 
 #Preview {
-    TrackerView()
+    TrackerView(tabSelection: .constant(1), myTab: 1)
         .environment(NutritionTrackerManager.shared)
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])
 }

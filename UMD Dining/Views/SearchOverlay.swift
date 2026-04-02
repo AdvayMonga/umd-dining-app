@@ -100,7 +100,7 @@ struct SearchOverlay: View {
                                         .padding(.horizontal, 4)
 
                                     ForEach(viewModel.results) { item in
-                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name)) {
+                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station.isEmpty ? nil : item.station, diningHallName: item.diningHallName.isEmpty ? nil : item.diningHallName)) {
                                             HStack(spacing: 12) {
                                                 VStack(alignment: .leading, spacing: 4) {
                                                     Text(item.name)
@@ -108,10 +108,15 @@ struct SearchOverlay: View {
                                                         .fontWeight(.semibold)
                                                         .foregroundStyle(.primary)
 
-                                                    if !item.allergens.isEmpty {
-                                                        Text(item.allergens)
-                                                            .font(.caption)
-                                                            .foregroundStyle(.secondary)
+                                                    if !item.station.isEmpty || !item.diningHallName.isEmpty {
+                                                        HStack(spacing: 4) {
+                                                            Image(systemName: "mappin.and.ellipse")
+                                                                .font(.caption)
+                                                                .foregroundStyle(Color.umdRed)
+                                                            Text([item.station, item.diningHallName].filter { !$0.isEmpty }.joined(separator: " · "))
+                                                                .font(.caption)
+                                                                .foregroundStyle(.secondary)
+                                                        }
                                                     }
                                                 }
 

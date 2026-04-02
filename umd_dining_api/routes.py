@@ -342,6 +342,31 @@ async def search_menu(request: Request, q: str = Query(default='')):
             {'_id': 0, 'embedding': 0}
         ).limit(50).to_list(None)
 
+        # Look up most recent station + dining hall for each food from menus
+        rec_nums = [f['rec_num'] for f in foods]
+        if rec_nums:
+            menu_entries = await db.menus.find(
+                {'rec_num': {'$in': rec_nums}},
+                {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1}
+            ).sort('date', -1).to_list(None)
+            # Keep only the most recent entry per rec_num
+            location_map = {}
+            for entry in menu_entries:
+                rn = entry['rec_num']
+                if rn not in location_map:
+                    hall_id = entry.get('dining_hall_id', '')
+                    hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
+                    location_map[rn] = {
+                        'station': entry.get('station', ''),
+                        'dining_hall_id': hall_id,
+                        'dining_hall_name': hall_doc['name'] if hall_doc else '',
+                    }
+            for food in foods:
+                loc = location_map.get(food['rec_num'], {})
+                food['station'] = loc.get('station', '')
+                food['dining_hall_id'] = loc.get('dining_hall_id', '')
+                food['dining_hall_name'] = loc.get('dining_hall_name', '')
+
         return {'success': True, 'query': q, 'count': len(foods), 'data': foods}
     except HTTPException:
         raise

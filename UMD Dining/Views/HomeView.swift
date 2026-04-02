@@ -2,9 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct HomeView: View {
+    @Binding var tabSelection: Int
+    let myTab: Int
     @State private var viewModel = HomeViewModel()
     @State private var showSearch = false
     @State private var showFilter = false
+    @State private var scrollProxy: ScrollViewProxy?
 
     var body: some View {
         NavigationStack {
@@ -21,6 +24,11 @@ struct HomeView: View {
             .onChange(of: viewModel.selectedDate) {
                 Task { await viewModel.loadMenus() }
             }
+            .onChange(of: tabSelection) {
+                if tabSelection == myTab {
+                    withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
+                }
+            }
         }
     }
 
@@ -33,8 +41,7 @@ struct HomeView: View {
 
             Spacer()
 
-            DatePicker("", selection: $viewModel.selectedDate, displayedComponents: .date)
-                .labelsHidden()
+            CalendarCardButton(selection: $viewModel.selectedDate)
 
             Button { showSearch = true } label: {
                 Image(systemName: "magnifyingglass")
@@ -128,9 +135,11 @@ struct HomeView: View {
             )
             Spacer()
         } else {
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(viewModel.displayRows) { row in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        Color.clear.frame(height: 0).id("top")
+                        ForEach(viewModel.displayRows) { row in
                         switch row {
                         case .stationHeader(let station, let hallId, _):
                             StationHeaderRow(
@@ -152,10 +161,11 @@ struct HomeView: View {
                                     .fontWeight(.semibold)
                                     .foregroundStyle(Color.umdRed)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, 10)
                                     .background(Color(.systemBackground))
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                                    .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
                             }
                             .buttonStyle(.plain)
                         case .menuItem(let item):
@@ -170,18 +180,20 @@ struct HomeView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-            .refreshable {
-                await viewModel.forceReloadMenus()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .refreshable {
+                    await viewModel.forceReloadMenus()
+                }
+                .onAppear { scrollProxy = proxy }
             }
         }
     }
 }
 
 #Preview {
-    HomeView()
+    HomeView(tabSelection: .constant(0), myTab: 0)
         .environment(FavoritesManager.shared)
         .environment(NutritionTrackerManager.shared)
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])

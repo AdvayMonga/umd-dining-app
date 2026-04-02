@@ -7,6 +7,9 @@ struct SearchResult: Decodable, Identifiable, Sendable {
     let ingredients: String
     let nutrition: [String: String]
     let nutritionFetched: Bool
+    let station: String
+    let diningHallId: String
+    let diningHallName: String
 
     var id: String { recNum }
 
@@ -17,6 +20,9 @@ struct SearchResult: Decodable, Identifiable, Sendable {
         case ingredients
         case nutrition
         case nutritionFetched = "nutrition_fetched"
+        case station
+        case diningHallId = "dining_hall_id"
+        case diningHallName = "dining_hall_name"
     }
 
     init(from decoder: Decoder) throws {
@@ -27,5 +33,8 @@ struct SearchResult: Decodable, Identifiable, Sendable {
         ingredients = try container.decodeIfPresent(String.self, forKey: .ingredients) ?? ""
         nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition) ?? [:]
         nutritionFetched = try container.decodeIfPresent(Bool.self, forKey: .nutritionFetched) ?? false
+        station = try container.decodeIfPresent(String.self, forKey: .station) ?? ""
+        diningHallId = try container.decodeIfPresent(String.self, forKey: .diningHallId) ?? ""
+        diningHallName = try container.decodeIfPresent(String.self, forKey: .diningHallName) ?? ""
     }
 }

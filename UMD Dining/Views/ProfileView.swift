@@ -2,6 +2,8 @@ import AuthenticationServices
 import SwiftUI
 
 struct ProfileView: View {
+    @Binding var tabSelection: Int
+    let myTab: Int
     @State private var preferences = UserPreferences.shared
     @Environment(FavoritesManager.self) private var favorites
     @AppStorage("isDarkMode") private var isDarkMode = true
@@ -11,6 +13,7 @@ struct ProfileView: View {
     @State private var showCuisinePrefs = false
     @State private var foodsToShow = 10
     @State private var stationsToShow = 10
+    @State private var scrollProxy: ScrollViewProxy?
 
     private let allergenOptions = [
         ("Contains dairy", "Dairy"),
@@ -24,10 +27,12 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    // --- Account header (MOVED TO TOP) ---
-                    if AuthManager.shared.isGuest {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 16) {
+                        Color.clear.frame(height: 0).id("profileTop")
+                        // --- Account header (MOVED TO TOP) ---
+                        if AuthManager.shared.isGuest {
                         sectionCard("Account") {
                             VStack(spacing: 8) {
                                 Text("Sign in to save your preferences")
@@ -53,8 +58,10 @@ struct ProfileView: View {
                                         print("Upgrade failed: \(error.localizedDescription)")
                                     }
                                 }
+                                .signInWithAppleButtonStyle(isDarkMode ? .black : .white)
                                 .frame(height: 44)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3), lineWidth: 1))
                                 .disabled(isUpgrading)
                             }
                         }
@@ -205,11 +212,18 @@ struct ProfileView: View {
 
                     Spacer().frame(height: 40)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                }
+                .onAppear { scrollProxy = proxy }
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Profile")
+            .onChange(of: tabSelection) {
+                if tabSelection == myTab {
+                    withAnimation { scrollProxy?.scrollTo("profileTop", anchor: .top) }
+                }
+            }
             .sheet(isPresented: $showCuisinePrefs) {
                 NavigationStack {
                     PalateSurveyView(onComplete: {})
@@ -322,7 +336,7 @@ struct ProfileView: View {
     private func sectionCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.subheadline)
+                .font(.callout)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -334,17 +348,18 @@ struct ProfileView: View {
     private func togglePill(label: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
-                Image(systemName: icon)
-                    .foregroundStyle(Color.umdRed)
                 Text(label)
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                 Spacer()
+                Image(systemName: icon)
+                    .foregroundStyle(.primary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
@@ -397,6 +412,7 @@ struct ProfileView: View {
             .padding(.vertical, 14)
             .background(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
@@ -404,6 +420,6 @@ struct ProfileView: View {
 }
 
 #Preview {
-    ProfileView()
+    ProfileView(tabSelection: .constant(2), myTab: 2)
         .environment(FavoritesManager.shared)
 }

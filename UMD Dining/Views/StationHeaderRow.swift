@@ -26,13 +26,13 @@ struct StationHeaderRow: View {
                     Text(station)
                         .font(.subheadline)
                         .fontWeight(.bold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.umdRed)
                     Text("·")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.umdRed.opacity(0.5))
                     Text(diningHallName)
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(Color.umdRed.opacity(0.75))
                     Spacer()
                 }
                 .contentShape(Rectangle())
@@ -44,7 +44,7 @@ struct StationHeaderRow: View {
                 favorites.toggleStation(name: station)
             } label: {
                 Image(systemName: favorites.isFavoriteStation(station) ? "heart.fill" : "heart")
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.umdRed)
                     .font(.title3)
                     .frame(width: 40, height: 40)
             }
@@ -53,7 +53,8 @@ struct StationHeaderRow: View {
         .padding(.vertical, 2)
         .padding(.leading, 12)
         .padding(.trailing, 4)
-        .background(Color.umdRed)
+        .background(Color.umdRed.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.3), lineWidth: 1))
     }
 }

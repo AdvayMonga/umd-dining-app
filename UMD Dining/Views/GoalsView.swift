@@ -26,7 +26,7 @@ struct GoalsView: View {
     private var weightGoalSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Weight Goal")
-                .font(.subheadline)
+                .font(.callout)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -77,7 +77,7 @@ struct GoalsView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Daily Calories")
-                .font(.subheadline)
+                .font(.callout)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -132,7 +132,7 @@ struct GoalsView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Macros")
-                .font(.subheadline)
+                .font(.callout)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)

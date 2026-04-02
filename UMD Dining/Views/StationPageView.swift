@@ -39,8 +39,7 @@ struct StationPageView: View {
                     }
                 }
                 Spacer()
-                DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                    .labelsHidden()
+                CalendarCardButton(selection: $selectedDate)
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
