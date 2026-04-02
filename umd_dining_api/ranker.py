@@ -44,6 +44,14 @@ def get_calories(nutrition):
     return _get_nutrient(nutrition, 'Calories', 'calories', 'Energy')
 
 
+def get_carbs(nutrition):
+    return _get_nutrient(nutrition, 'Total Carbohydrate', 'Carbohydrates', 'carbs')
+
+
+def get_fat(nutrition):
+    return _get_nutrient(nutrition, 'Total Fat', 'Fat', 'fat')
+
+
 def _is_single_ingredient(food):
     """Check if a food item has 0 or 1 ingredients (e.g. 'Banana', 'Rice')."""
     ingredients = food.get('ingredients', '')
@@ -173,16 +181,18 @@ def rank_items(
         # --- Nutrition & similarity signals (skip for sides) ---
         if not is_side:
             protein = get_protein(nutrition)
-            calories = get_calories(nutrition)
+            carbs = get_carbs(nutrition)
+            fat = get_fat(nutrition)
 
-            if protein is not None and protein >= 20:
-                score += 20
+            if protein is not None and protein >= 15:
+                score += 5
                 signals.add('high_protein')
 
+            macro_total = (protein or 0) + (carbs or 0) + (fat or 0)
             if (protein is not None and protein >= 5
-                    and calories is not None and calories > 0
-                    and (protein * 4) / calories >= 0.25):
-                score += 15
+                    and macro_total > 0
+                    and protein / macro_total >= 0.25):
+                score += 5
                 signals.add('protein_ratio')
 
             # Tiered cosine similarity
@@ -191,13 +201,13 @@ def rank_items(
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
                     if sim >= 0.88:
-                        score += 35
+                        score += 45
                         signals.add('similar_to_favorites')
                     elif sim >= 0.82:
-                        score += 25
+                        score += 30
                         signals.add('similar_to_favorites')
                     elif sim >= 0.76:
-                        score += 12
+                        score += 18
                         signals.add('somewhat_similar')
 
         # --- Filters ---
@@ -210,17 +220,20 @@ def rank_items(
         if _is_single_ingredient(food) and score == 0:
             continue
 
-        # --- Assign display tag (highest-priority signal) ---
+        # --- Assign display tags ---
+        # Favorite, Trending, High Protein can all stack
+        # Recommended is excluded if Favorite is present
+        tags = []
         if 'favorite' in signals:
-            tag = 'Favorite'
-        elif 'trending' in signals:
-            tag = 'Trending'
-        elif 'similar_to_favorites' in signals:
-            tag = 'Recommended'
-        elif 'high_protein' in signals or 'protein_ratio' in signals:
-            tag = 'High Protein'
-        else:
-            tag = None
+            tags.append('Favorite')
+        if 'trending' in signals:
+            tags.append('Trending')
+        if 'similar_to_favorites' in signals and 'favorite' not in signals:
+            tags.append('Recommended')
+        if 'high_protein' in signals or 'protein_ratio' in signals:
+            tags.append('High Protein')
+
+        tag = tags[0] if tags else None
 
         item = {
             'name': food.get('name', ''),
@@ -235,6 +248,7 @@ def rank_items(
             'allergens': food.get('allergens', ''),
             'ingredients': food.get('ingredients', ''),
             'tag': tag,
+            'tags': tags,
         }
 
         if score > 0:

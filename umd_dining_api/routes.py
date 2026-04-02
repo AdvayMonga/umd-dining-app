@@ -296,7 +296,7 @@ async def get_ranked_menu(
                     grams = float(digits) if digits else 0
                 except ValueError:
                     grams = 0
-                if grams < 20:
+                if grams < 15:
                     continue
             filtered_entries.append(entry)
         menu_entries = filtered_entries
@@ -319,15 +319,19 @@ async def get_ranked_menu(
                 if doc.get('embedding') and doc['rec_num'] in foods:
                     foods[doc['rec_num']]['embedding'] = doc['embedding']
 
-    # Cold-start fallback
-    if user_id and len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
+    # Blend cuisine centroids: full strength at 0 favs, linearly decreasing to 0.5 at 20+ favs
+    if user_id and user_prefs.get('cuisine_prefs'):
         cuisine_docs = await db.cuisine_embeddings.find(
             {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
             {'embedding': 1, '_id': 0}
         ).to_list(None)
         cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
         if cuisine_embs:
-            fav_embeddings = cuisine_embs
+            import numpy as np
+            num_favs = len(fav_embeddings)
+            weight = 1.0 - 0.5 * min(num_favs, 20) / 20  # 1.0 → 0.5 over 0–20 favs
+            weighted = [(np.asarray(e, dtype=np.float32) * weight).tolist() for e in cuisine_embs]
+            fav_embeddings = fav_embeddings + weighted
 
     result = rank_items(
         menu_entries=menu_entries,

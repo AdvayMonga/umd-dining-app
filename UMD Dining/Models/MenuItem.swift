@@ -13,6 +13,7 @@ struct MenuItem: Decodable, Identifiable, Sendable {
     let ingredients: String?
     let nutrition: [String: String]?
     let tag: String?
+    let tags: [String]
 
     var id: String { recNum }
 
@@ -29,5 +30,23 @@ struct MenuItem: Decodable, Identifiable, Sendable {
         case ingredients
         case nutrition
         case tag
+        case tags
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        recNum = try container.decode(String.self, forKey: .recNum)
+        diningHallId = try container.decode(String.self, forKey: .diningHallId)
+        date = try container.decode(String.self, forKey: .date)
+        mealPeriod = try container.decode(String.self, forKey: .mealPeriod)
+        station = try container.decode(String.self, forKey: .station)
+        dietaryIcons = try container.decode([String].self, forKey: .dietaryIcons)
+        nutritionFetched = try container.decode(Bool.self, forKey: .nutritionFetched)
+        allergens = try container.decodeIfPresent(String.self, forKey: .allergens)
+        ingredients = try container.decodeIfPresent(String.self, forKey: .ingredients)
+        nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition)
+        tag = try container.decodeIfPresent(String.self, forKey: .tag)
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
     }
 }

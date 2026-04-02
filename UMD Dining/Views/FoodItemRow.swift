@@ -21,14 +21,18 @@ struct FoodItemRow: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
 
-                if let tag = item.tag {
-                    Text(tag)
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(tagColor(for: tag).opacity(0.15))
-                        .foregroundStyle(tagColor(for: tag))
-                        .clipShape(Capsule())
+                if !item.tags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(item.tags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.system(size: 10, weight: .semibold))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(tagColor(for: tag).opacity(0.15))
+                                .foregroundStyle(tagColor(for: tag))
+                                .clipShape(Capsule())
+                        }
+                    }
                 }
 
                 Text("\(item.station) · \(diningHallName)")

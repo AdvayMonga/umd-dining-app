@@ -62,7 +62,7 @@ struct FilterOverlay: View {
                     sectionCard("Dietary Preferences") {
                         selectablePill("Vegetarian", isOn: $filterVegetarian)
                         selectablePill("Vegan", isOn: $filterVegan)
-                        selectablePill("High Protein (20g+)", isOn: $filterHighProtein)
+                        selectablePill("High Protein (15g+)", isOn: $filterHighProtein)
                     }
 
                     // --- Allergens ---
