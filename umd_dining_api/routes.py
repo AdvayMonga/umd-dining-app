@@ -181,6 +181,10 @@ async def get_ranked_menu(
     date: str = Query(default=None),
     dining_hall_ids: list[str] = Query(default=['19', '51', '16']),
     user_id: Optional[str] = Depends(get_optional_user),
+    vegetarian: bool = Query(default=False),
+    vegan: bool = Query(default=False),
+    high_protein: bool = Query(default=False),
+    allergens: list[str] = Query(default=[]),
 ):
     try:
         if not date:
@@ -274,6 +278,32 @@ async def get_ranked_menu(
         rec_nums = [e['rec_num'] for e in menu_entries]
         food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0, 'embedding': 0}).to_list(None)
         foods = {f['rec_num']: f for f in food_docs}
+
+        # --- Phase 2.5: Apply dietary filters before ranking ---
+        has_filters = vegetarian or vegan or high_protein or allergens
+        if has_filters:
+            filtered_entries = []
+            for entry in menu_entries:
+                icons = entry.get('dietary_icons', [])
+                if vegan and 'vegan' not in icons:
+                    continue
+                if vegetarian and 'vegetarian' not in icons:
+                    continue
+                if allergens and any(a in icons for a in allergens):
+                    continue
+                if high_protein:
+                    food = foods.get(entry['rec_num'], {})
+                    nutrition = food.get('nutrition') or {}
+                    protein_str = nutrition.get('Protein', nutrition.get('Protein.', ''))
+                    digits = ''.join(c for c in str(protein_str) if c.isdigit() or c == '.')
+                    try:
+                        grams = float(digits) if digits else 0
+                    except ValueError:
+                        grams = 0
+                    if grams < 20:
+                        continue
+                filtered_entries.append(entry)
+            menu_entries = filtered_entries
 
         # --- Phase 3: Fetch embeddings only if user has favorites ---
         fav_embeddings = []

@@ -47,9 +47,14 @@ class HomeViewModel {
 
     var showDiscovery: Bool = false
 
-    // Cache: skip network call if same date already loaded
-    private var lastLoadedDate: String?
+    // Cache: skip network call if same date + filters already loaded
+    private var lastLoadedKey: String?
     private var hasLoadedPrefs = false
+
+    private var currentCacheKey: String {
+        let allergenStr = filterAllergens.sorted().joined(separator: ",")
+        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHighProtein)|\(allergenStr)"
+    }
 
     // Snapshot of favorites at load time — keeps feed order stable until refresh
     private var loadedFavRecNums: Set<String> = []
@@ -67,14 +72,12 @@ class HomeViewModel {
 
 
     var displayRows: [FeedRow] {
-        // Full filters: meal + hall + dietary/allergen
+        // Filter by meal + hall (dietary/allergen filtering is done server-side)
         let filtered = allItems.filter { item in
             item.mealPeriod == selectedMealPeriod
             && selectedHallIds.contains(item.diningHallId)
-            && !UserPreferences.shared.shouldHide(item: item)
-            && !sessionShouldHide(item: item)
         }
-        // Minimal filter: meal + hall only (discovery previews ignore dietary filters)
+        // Minimal filter: meal + hall only (discovery previews)
         let minimalFiltered = allItems.filter {
             $0.mealPeriod == selectedMealPeriod && selectedHallIds.contains($0.diningHallId)
         }
@@ -166,21 +169,6 @@ class HomeViewModel {
         return rows
     }
 
-    private func sessionShouldHide(item: MenuItem) -> Bool {
-        if filterVegan && !item.dietaryIcons.contains("vegan") { return true }
-        if filterVegetarian && !item.dietaryIcons.contains("vegetarian") { return true }
-        if filterHighProtein {
-            let proteinStr = item.nutrition?["Protein"] ?? item.nutrition?["Protein."] ?? ""
-            let digits = proteinStr.filter { $0.isNumber || $0 == "." }
-            let grams = Double(digits) ?? 0
-            if grams < 20 { return true }
-        }
-        for allergen in filterAllergens {
-            if item.dietaryIcons.contains(allergen) { return true }
-        }
-        return false
-    }
-
     func diningHallName(for id: String) -> String {
         diningHallNames[id] ?? "Unknown"
     }
@@ -207,8 +195,8 @@ class HomeViewModel {
     }
 
     func loadMenus() async {
-        // Skip if same date is already loaded — show cached feed instantly
-        guard lastLoadedDate != dateString else { return }
+        // Skip if same date + filters already loaded — show cached feed instantly
+        guard lastLoadedKey != currentCacheKey else { return }
 
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
@@ -232,9 +220,13 @@ class HomeViewModel {
             allItems = try await DiningAPIService.shared.fetchRankedMenu(
                 date: dateString,
                 diningHallIds: allHallIds,
-                userId: userId
+                userId: userId,
+                vegetarian: filterVegetarian,
+                vegan: filterVegan,
+                highProtein: filterHighProtein,
+                allergens: filterAllergens
             )
-            lastLoadedDate = dateString
+            lastLoadedKey = currentCacheKey
             if !availableMealPeriods.contains(selectedMealPeriod),
                let first = availableMealPeriods.first {
                 selectedMealPeriod = first
@@ -250,7 +242,7 @@ class HomeViewModel {
     }
 
     func forceReloadMenus() async {
-        lastLoadedDate = nil
+        lastLoadedKey = nil
         hasLoadedPrefs = false
         await loadMenus()
     }

@@ -59,7 +59,9 @@ struct HomeView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
-        .sheet(isPresented: $showFilter) {
+        .sheet(isPresented: $showFilter, onDismiss: {
+            Task { await viewModel.loadMenus() }
+        }) {
             FilterOverlay(
                 selectedHallIds: $viewModel.selectedHallIds,
                 hallNames: viewModel.diningHallNames,

@@ -132,13 +132,27 @@ actor DiningAPIService {
         return response.data
     }
 
-    func fetchRankedMenu(date: String, diningHallIds: [String], userId: String?) async throws -> [MenuItem] {
+    func fetchRankedMenu(
+        date: String,
+        diningHallIds: [String],
+        userId: String?,
+        vegetarian: Bool = false,
+        vegan: Bool = false,
+        highProtein: Bool = false,
+        allergens: Set<String> = []
+    ) async throws -> [MenuItem] {
         let encodedDate = date.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? date
         var urlString = "\(baseURL)/ranked-menu?date=\(encodedDate)"
         for hallId in diningHallIds {
             urlString += "&dining_hall_ids=\(hallId)"
         }
-        // Send JWT if available; server extracts user_id from it
+        if vegetarian { urlString += "&vegetarian=true" }
+        if vegan { urlString += "&vegan=true" }
+        if highProtein { urlString += "&high_protein=true" }
+        for allergen in allergens {
+            let encoded = allergen.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? allergen
+            urlString += "&allergens=\(encoded)"
+        }
         let token = await AuthManager.shared.jwtToken
         let data = try await fetch(urlString, token: token)
         let response = try JSONDecoder().decode(MenuResponse.self, from: data)
