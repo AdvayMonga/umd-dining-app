@@ -210,12 +210,64 @@ async def get_ranked_menu(
                 return {}
             return await db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
 
-        menu_entries, fav_rec_nums, fav_stations, user_prefs, popular_rec_nums = await asyncio.gather(
+        async def fetch_user_view_counts():
+            """Get rec_nums this user has viewed, with counts."""
+            if not user_id:
+                return {}
+            pipeline = [
+                {'$match': {'user_id': user_id}},
+                {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+            ]
+            result = {}
+            async for doc in db.item_views.aggregate(pipeline):
+                result[doc['_id']] = doc['count']
+            return result
+
+        async def fetch_global_view_counts():
+            """Get view counts across all users for popularity signal."""
+            pipeline = [
+                {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+                {'$sort': {'count': -1}},
+                {'$limit': 100},
+            ]
+            result = {}
+            async for doc in db.item_views.aggregate(pipeline):
+                result[doc['_id']] = doc['count']
+            return result
+
+        async def fetch_recent_hall_interest():
+            """Get dining halls the user has recently engaged with."""
+            if not user_id:
+                return {}
+            pipeline = [
+                {'$match': {'user_id': user_id}},
+                {'$sort': {'timestamp': -1}},
+                {'$limit': 50},
+                {'$lookup': {
+                    'from': 'menus',
+                    'localField': 'rec_num',
+                    'foreignField': 'rec_num',
+                    'as': 'menu_entry',
+                }},
+                {'$unwind': {'path': '$menu_entry', 'preserveNullAndEmpty': False}},
+                {'$group': {'_id': '$menu_entry.dining_hall_id', 'count': {'$sum': 1}}},
+            ]
+            result = {}
+            async for doc in db.item_views.aggregate(pipeline):
+                if doc['_id']:
+                    result[doc['_id']] = doc['count']
+            return result
+
+        (menu_entries, fav_rec_nums, fav_stations, user_prefs,
+         popular_rec_nums, user_views, global_views, hall_interest) = await asyncio.gather(
             fetch_menus(),
             fetch_user_favs(),
             fetch_user_stations(),
             fetch_user_prefs(),
             _get_trending(),
+            fetch_user_view_counts(),
+            fetch_global_view_counts(),
+            fetch_recent_hall_interest(),
         )
 
         # --- Phase 2: Fetch foods (exclude embeddings) ---
@@ -260,6 +312,9 @@ async def get_ranked_menu(
             popular_rec_nums=popular_rec_nums,
             date_seed=date,
             fav_embeddings=fav_embeddings,
+            user_views=user_views,
+            global_views=global_views,
+            hall_interest=hall_interest,
         )
 
         return {'success': True, 'count': len(result), 'data': result}

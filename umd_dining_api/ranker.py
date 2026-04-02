@@ -44,6 +44,15 @@ def get_calories(nutrition):
     return _get_nutrient(nutrition, 'Calories', 'calories', 'Energy')
 
 
+def _is_single_ingredient(food):
+    """Check if a food item has 0 or 1 ingredients (e.g. 'Banana', 'Rice')."""
+    ingredients = food.get('ingredients', '')
+    if not ingredients:
+        return True
+    parts = [p.strip() for p in ingredients.split(',') if p.strip()]
+    return len(parts) <= 1
+
+
 # ---------------------------------------------------------------------------
 # Core ranking function
 # ---------------------------------------------------------------------------
@@ -57,28 +66,42 @@ def rank_items(
     popular_rec_nums,
     date_seed,
     fav_embeddings=None,
+    user_views=None,
+    global_views=None,
+    hall_interest=None,
 ):
     """
     Score, tag, and sort menu items for the feed.
 
     Args:
-        menu_entries:     list of dicts from db.menus
-        foods:            dict mapping rec_num -> food doc from db.foods
-        fav_rec_nums:     set of rec_nums the user has favorited
-        fav_stations:     set of station names the user has favorited
-        user_prefs:       dict with keys 'vegetarian' (bool), 'vegan' (bool)
-        popular_rec_nums: set of rec_nums trending across all users
-        date_seed:        string used to seed the shuffle of untagged items
+        menu_entries:      list of dicts from db.menus
+        foods:             dict mapping rec_num -> food doc from db.foods
+        fav_rec_nums:      set of rec_nums the user has favorited
+        fav_stations:      set of station names the user has favorited
+        user_prefs:        dict with keys 'vegetarian' (bool), 'vegan' (bool)
+        popular_rec_nums:  set of rec_nums trending across all users (by favorites)
+        date_seed:         string used to seed the shuffle of untagged items
+        fav_embeddings:    list of embedding vectors for user's favorites
+        user_views:        dict mapping rec_num -> view count for this user
+        global_views:      dict mapping rec_num -> view count across all users
+        hall_interest:     dict mapping dining_hall_id -> recent engagement count
 
     Returns:
         list of item dicts with 'tag' field, ordered:
           - scored items (score > 0) descending by score
           - untagged entrees (score == 0) shuffled deterministically
           - sides with no tag are excluded entirely
+          - single-ingredient items with no tag are excluded
     """
     is_vegetarian = user_prefs.get('vegetarian', False)
     is_vegan = user_prefs.get('vegan', False)
     fav_centroid = compute_centroid(fav_embeddings) if fav_embeddings else None
+    user_views = user_views or {}
+    global_views = global_views or {}
+    hall_interest = hall_interest or {}
+
+    # Compute max global views for normalization
+    max_global_views = max(global_views.values()) if global_views else 1
 
     scored = []    # (score, tag, item_dict)
     untagged = []  # item_dicts with score == 0
@@ -88,6 +111,7 @@ def rank_items(
         nutrition = food.get('nutrition') or {}
         station = entry.get('station', '')
         rec_num = entry['rec_num']
+        dining_hall_id = entry.get('dining_hall_id', '')
         dietary_icons = entry.get('dietary_icons', [])
         is_side = 'side' in station.lower()
 
@@ -95,14 +119,17 @@ def rank_items(
         score = 0
         signals = set()
 
+        # Favorite: highest signal
         if rec_num in fav_rec_nums:
             score += 100
             signals.add('favorite')
 
+        # Favorite station
         if station in fav_stations:
             score += 60
             signals.add('favorite_station')
 
+        # Trending (favorited by many users)
         if rec_num in popular_rec_nums:
             score += 40
             signals.add('trending')
@@ -115,6 +142,35 @@ def rank_items(
             score += 20
             signals.add('pref_match')
 
+        # --- Engagement signals ---
+
+        # Personal re-engagement: user has viewed this item before
+        personal_views = user_views.get(rec_num, 0)
+        if personal_views >= 3:
+            score += 15
+            signals.add('personal_interest')
+        elif personal_views >= 1:
+            score += 8
+            signals.add('personal_interest')
+
+        # Global popularity by views (normalized, max +20)
+        gv = global_views.get(rec_num, 0)
+        if gv > 0:
+            popularity_score = min(20, int(20 * (gv / max_global_views)))
+            if popularity_score >= 5:
+                score += popularity_score
+                signals.add('popular_views')
+
+        # Recent dining hall interest: boost items from halls user recently engaged with
+        hall_engagement = hall_interest.get(dining_hall_id, 0)
+        if hall_engagement >= 5:
+            score += 15
+            signals.add('hall_interest')
+        elif hall_engagement >= 2:
+            score += 8
+            signals.add('hall_interest')
+
+        # --- Nutrition & similarity signals (skip for sides) ---
         if not is_side:
             protein = get_protein(nutrition)
             calories = get_calories(nutrition)
@@ -129,14 +185,29 @@ def rank_items(
                 score += 15
                 signals.add('protein_ratio')
 
+            # Tiered cosine similarity
             if fav_centroid is not None:
                 item_embedding = food.get('embedding')
-                if item_embedding and cosine_similarity(fav_centroid, item_embedding) >= 0.82:
-                    score += 25
-                    signals.add('similar_to_favorites')
+                if item_embedding:
+                    sim = cosine_similarity(fav_centroid, item_embedding)
+                    if sim >= 0.88:
+                        score += 35
+                        signals.add('similar_to_favorites')
+                    elif sim >= 0.82:
+                        score += 25
+                        signals.add('similar_to_favorites')
+                    elif sim >= 0.76:
+                        score += 12
+                        signals.add('somewhat_similar')
+
+        # --- Filters ---
 
         # Drop untagged sides
         if is_side and score == 0:
+            continue
+
+        # Drop single-ingredient items unless they earned a score
+        if _is_single_ingredient(food) and score == 0:
             continue
 
         # --- Assign display tag (highest-priority signal) ---
