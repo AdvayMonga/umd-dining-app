@@ -158,20 +158,14 @@ async def home():
 
 @router.get('/api/dining-halls')
 async def get_dining_halls():
-    try:
-        halls = await db.dining_halls.find({}, {'_id': 0}).to_list(None)
-        return {'success': True, 'count': len(halls), 'data': halls}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    halls = await db.dining_halls.find({}, {'_id': 0}).to_list(None)
+    return {'success': True, 'count': len(halls), 'data': halls}
 
 
 @router.get('/api/available-dates')
 async def get_available_dates():
-    try:
-        dates = await db.menus.distinct("date")
-        return {'success': True, 'count': len(dates), 'data': sorted(dates)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    dates = await db.menus.distinct("date")
+    return {'success': True, 'count': len(dates), 'data': sorted(dates)}
 
 
 @router.get('/api/ranked-menu')
@@ -186,172 +180,167 @@ async def get_ranked_menu(
     high_protein: bool = Query(default=False),
     allergens: list[str] = Query(default=[]),
 ):
-    try:
-        if not date:
-            raise HTTPException(status_code=400, detail='date required')
+    if not date:
+        raise HTTPException(status_code=400, detail='date required')
 
-        # --- Phase 1: Parallel async DB queries ---
-        async def fetch_menus():
-            return await db.menus.find(
-                {'date': date, 'dining_hall_id': {'$in': dining_hall_ids}},
-                {'_id': 0}
-            ).to_list(None)
+    # --- Phase 1: Parallel async DB queries ---
+    async def fetch_menus():
+        return await db.menus.find(
+            {'date': date, 'dining_hall_id': {'$in': dining_hall_ids}},
+            {'_id': 0}
+        ).to_list(None)
 
-        async def fetch_user_favs():
-            if not user_id:
-                return set()
-            docs = await db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0}).to_list(None)
-            return {d['rec_num'] for d in docs}
+    async def fetch_user_favs():
+        if not user_id:
+            return set()
+        docs = await db.favorites.find({'user_id': user_id}, {'rec_num': 1, '_id': 0}).to_list(None)
+        return {d['rec_num'] for d in docs}
 
-        async def fetch_user_stations():
-            if not user_id:
-                return set()
-            docs = await db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0}).to_list(None)
-            return {d['station_name'] for d in docs}
+    async def fetch_user_stations():
+        if not user_id:
+            return set()
+        docs = await db.station_favorites.find({'user_id': user_id}, {'station_name': 1, '_id': 0}).to_list(None)
+        return {d['station_name'] for d in docs}
 
-        async def fetch_user_prefs():
-            if not user_id:
-                return {}
-            return await db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
+    async def fetch_user_prefs():
+        if not user_id:
+            return {}
+        return await db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
 
-        async def fetch_user_view_counts():
-            """Get rec_nums this user has viewed, with counts."""
-            if not user_id:
-                return {}
-            pipeline = [
-                {'$match': {'user_id': user_id}},
-                {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-            ]
-            result = {}
-            async for doc in db.item_views.aggregate(pipeline):
+    async def fetch_user_view_counts():
+        """Get rec_nums this user has viewed, with counts."""
+        if not user_id:
+            return {}
+        pipeline = [
+            {'$match': {'user_id': user_id}},
+            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+        ]
+        result = {}
+        async for doc in db.item_views.aggregate(pipeline):
+            result[doc['_id']] = doc['count']
+        return result
+
+    async def fetch_global_view_counts():
+        """Get view counts across all users for popularity signal."""
+        pipeline = [
+            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+            {'$sort': {'count': -1}},
+            {'$limit': 100},
+        ]
+        result = {}
+        async for doc in db.item_views.aggregate(pipeline):
+            result[doc['_id']] = doc['count']
+        return result
+
+    async def fetch_recent_hall_interest():
+        """Get dining halls the user has recently engaged with."""
+        if not user_id:
+            return {}
+        pipeline = [
+            {'$match': {'user_id': user_id}},
+            {'$sort': {'timestamp': -1}},
+            {'$limit': 50},
+            {'$lookup': {
+                'from': 'menus',
+                'localField': 'rec_num',
+                'foreignField': 'rec_num',
+                'as': 'menu_entry',
+            }},
+            {'$unwind': {'path': '$menu_entry', 'preserveNullAndEmptyArrays': False}},
+            {'$group': {'_id': '$menu_entry.dining_hall_id', 'count': {'$sum': 1}}},
+        ]
+        result = {}
+        async for doc in db.item_views.aggregate(pipeline):
+            if doc['_id']:
                 result[doc['_id']] = doc['count']
-            return result
+        return result
 
-        async def fetch_global_view_counts():
-            """Get view counts across all users for popularity signal."""
-            pipeline = [
-                {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-                {'$sort': {'count': -1}},
-                {'$limit': 100},
-            ]
-            result = {}
-            async for doc in db.item_views.aggregate(pipeline):
-                result[doc['_id']] = doc['count']
-            return result
+    (menu_entries, fav_rec_nums, fav_stations, user_prefs,
+     popular_rec_nums, user_views, global_views, hall_interest) = await asyncio.gather(
+        fetch_menus(),
+        fetch_user_favs(),
+        fetch_user_stations(),
+        fetch_user_prefs(),
+        _get_trending(),
+        fetch_user_view_counts(),
+        fetch_global_view_counts(),
+        fetch_recent_hall_interest(),
+    )
 
-        async def fetch_recent_hall_interest():
-            """Get dining halls the user has recently engaged with."""
-            if not user_id:
-                return {}
-            pipeline = [
-                {'$match': {'user_id': user_id}},
-                {'$sort': {'timestamp': -1}},
-                {'$limit': 50},
-                {'$lookup': {
-                    'from': 'menus',
-                    'localField': 'rec_num',
-                    'foreignField': 'rec_num',
-                    'as': 'menu_entry',
-                }},
-                {'$unwind': {'path': '$menu_entry', 'preserveNullAndEmptyArrays': False}},
-                {'$group': {'_id': '$menu_entry.dining_hall_id', 'count': {'$sum': 1}}},
-            ]
-            result = {}
-            async for doc in db.item_views.aggregate(pipeline):
-                if doc['_id']:
-                    result[doc['_id']] = doc['count']
-            return result
+    # --- Phase 2: Fetch foods (exclude embeddings) ---
+    rec_nums = [e['rec_num'] for e in menu_entries]
+    food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0, 'embedding': 0}).to_list(None)
+    foods = {f['rec_num']: f for f in food_docs}
 
-        (menu_entries, fav_rec_nums, fav_stations, user_prefs,
-         popular_rec_nums, user_views, global_views, hall_interest) = await asyncio.gather(
-            fetch_menus(),
-            fetch_user_favs(),
-            fetch_user_stations(),
-            fetch_user_prefs(),
-            _get_trending(),
-            fetch_user_view_counts(),
-            fetch_global_view_counts(),
-            fetch_recent_hall_interest(),
-        )
-
-        # --- Phase 2: Fetch foods (exclude embeddings) ---
-        rec_nums = [e['rec_num'] for e in menu_entries]
-        food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0, 'embedding': 0}).to_list(None)
-        foods = {f['rec_num']: f for f in food_docs}
-
-        # --- Phase 2.5: Apply dietary filters before ranking ---
-        has_filters = vegetarian or vegan or high_protein or allergens
-        if has_filters:
-            filtered_entries = []
-            for entry in menu_entries:
-                icons = entry.get('dietary_icons', [])
-                if vegan and 'vegan' not in icons:
+    # --- Phase 2.5: Apply dietary filters before ranking ---
+    has_filters = vegetarian or vegan or high_protein or allergens
+    if has_filters:
+        filtered_entries = []
+        for entry in menu_entries:
+            icons = entry.get('dietary_icons', [])
+            if vegan and 'vegan' not in icons:
+                continue
+            if vegetarian and 'vegetarian' not in icons:
+                continue
+            if allergens and any(a in icons for a in allergens):
+                continue
+            if high_protein:
+                food = foods.get(entry['rec_num'], {})
+                nutrition = food.get('nutrition') or {}
+                protein_str = nutrition.get('Protein', nutrition.get('Protein.', ''))
+                digits = ''.join(c for c in str(protein_str) if c.isdigit() or c == '.')
+                try:
+                    grams = float(digits) if digits else 0
+                except ValueError:
+                    grams = 0
+                if grams < 20:
                     continue
-                if vegetarian and 'vegetarian' not in icons:
-                    continue
-                if allergens and any(a in icons for a in allergens):
-                    continue
-                if high_protein:
-                    food = foods.get(entry['rec_num'], {})
-                    nutrition = food.get('nutrition') or {}
-                    protein_str = nutrition.get('Protein', nutrition.get('Protein.', ''))
-                    digits = ''.join(c for c in str(protein_str) if c.isdigit() or c == '.')
-                    try:
-                        grams = float(digits) if digits else 0
-                    except ValueError:
-                        grams = 0
-                    if grams < 20:
-                        continue
-                filtered_entries.append(entry)
-            menu_entries = filtered_entries
+            filtered_entries.append(entry)
+        menu_entries = filtered_entries
 
-        # --- Phase 3: Fetch embeddings only if user has favorites ---
-        fav_embeddings = []
-        if user_id and fav_rec_nums:
-            fav_food_docs = await db.foods.find(
-                {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
-                {'embedding': 1, '_id': 0}
+    # --- Phase 3: Fetch embeddings only if user has favorites ---
+    fav_embeddings = []
+    if user_id and fav_rec_nums:
+        fav_food_docs = await db.foods.find(
+            {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
+            {'embedding': 1, '_id': 0}
+        ).to_list(None)
+        fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
+
+        if fav_embeddings:
+            menu_emb_docs = await db.foods.find(
+                {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True}},
+                {'rec_num': 1, 'embedding': 1, '_id': 0}
             ).to_list(None)
-            fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
+            for doc in menu_emb_docs:
+                if doc.get('embedding') and doc['rec_num'] in foods:
+                    foods[doc['rec_num']]['embedding'] = doc['embedding']
 
-            if fav_embeddings:
-                menu_emb_docs = await db.foods.find(
-                    {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True}},
-                    {'rec_num': 1, 'embedding': 1, '_id': 0}
-                ).to_list(None)
-                for doc in menu_emb_docs:
-                    if doc.get('embedding') and doc['rec_num'] in foods:
-                        foods[doc['rec_num']]['embedding'] = doc['embedding']
+    # Cold-start fallback
+    if user_id and len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
+        cuisine_docs = await db.cuisine_embeddings.find(
+            {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
+            {'embedding': 1, '_id': 0}
+        ).to_list(None)
+        cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
+        if cuisine_embs:
+            fav_embeddings = cuisine_embs
 
-        # Cold-start fallback
-        if user_id and len(fav_embeddings) < 3 and user_prefs.get('cuisine_prefs'):
-            cuisine_docs = await db.cuisine_embeddings.find(
-                {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
-                {'embedding': 1, '_id': 0}
-            ).to_list(None)
-            cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
-            if cuisine_embs:
-                fav_embeddings = cuisine_embs
+    result = rank_items(
+        menu_entries=menu_entries,
+        foods=foods,
+        fav_rec_nums=fav_rec_nums,
+        fav_stations=fav_stations,
+        user_prefs=user_prefs,
+        popular_rec_nums=popular_rec_nums,
+        date_seed=date,
+        fav_embeddings=fav_embeddings,
+        user_views=user_views,
+        global_views=global_views,
+        hall_interest=hall_interest,
+    )
 
-        result = rank_items(
-            menu_entries=menu_entries,
-            foods=foods,
-            fav_rec_nums=fav_rec_nums,
-            fav_stations=fav_stations,
-            user_prefs=user_prefs,
-            popular_rec_nums=popular_rec_nums,
-            date_seed=date,
-            fav_embeddings=fav_embeddings,
-            user_views=user_views,
-            global_views=global_views,
-            hall_interest=hall_interest,
-        )
-
-        return {'success': True, 'count': len(result), 'data': result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {'success': True, 'count': len(result), 'data': result}
 
 
 @router.get('/api/menu')
@@ -359,114 +348,101 @@ async def get_menu(
     date: Optional[str] = Query(default=None),
     dining_hall_id: Optional[str] = Query(default=None),
 ):
-    try:
-        query: dict = {}
-        if dining_hall_id:
-            query['dining_hall_id'] = dining_hall_id
-        if date:
-            query['date'] = date
+    query: dict = {}
+    if dining_hall_id:
+        query['dining_hall_id'] = dining_hall_id
+    if date:
+        query['date'] = date
 
-        menu_entries = await db.menus.find(query, {'_id': 0}).to_list(None)
-        rec_nums = [entry['rec_num'] for entry in menu_entries]
-        food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0}).to_list(None)
-        foods = {f['rec_num']: f for f in food_docs}
+    menu_entries = await db.menus.find(query, {'_id': 0}).to_list(None)
+    rec_nums = [entry['rec_num'] for entry in menu_entries]
+    food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0}).to_list(None)
+    foods = {f['rec_num']: f for f in food_docs}
 
-        items = []
-        for entry in menu_entries:
-            food = foods.get(entry['rec_num'], {})
-            items.append({
-                'name': food.get('name', ''),
-                'rec_num': entry['rec_num'],
-                'dining_hall_id': entry['dining_hall_id'],
-                'date': entry['date'],
-                'meal_period': entry.get('meal_period', 'Unknown'),
-                'station': entry.get('station', 'Unknown'),
-                'dietary_icons': entry.get('dietary_icons', []),
-                'nutrition_fetched': food.get('nutrition_fetched', False),
-                'nutrition': food.get('nutrition', {}),
-                'allergens': food.get('allergens', ''),
-                'ingredients': food.get('ingredients', ''),
-            })
+    items = []
+    for entry in menu_entries:
+        food = foods.get(entry['rec_num'], {})
+        items.append({
+            'name': food.get('name', ''),
+            'rec_num': entry['rec_num'],
+            'dining_hall_id': entry['dining_hall_id'],
+            'date': entry['date'],
+            'meal_period': entry.get('meal_period', 'Unknown'),
+            'station': entry.get('station', 'Unknown'),
+            'dietary_icons': entry.get('dietary_icons', []),
+            'nutrition_fetched': food.get('nutrition_fetched', False),
+            'nutrition': food.get('nutrition', {}),
+            'allergens': food.get('allergens', ''),
+            'ingredients': food.get('ingredients', ''),
+        })
 
-        return {'success': True, 'count': len(items), 'filters': query, 'data': items}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {'success': True, 'count': len(items), 'filters': query, 'data': items}
 
 
 @router.get('/api/nutrition')
 @limiter.limit("60/minute")
 async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
-    try:
-        if not rec_num:
-            raise HTTPException(status_code=400, detail='rec_num parameter required')
+    if not rec_num:
+        raise HTTPException(status_code=400, detail='rec_num parameter required')
 
-        # fetch_and_cache_nutrition is sync (hits UMD's site) — run in thread
-        loop = asyncio.get_event_loop()
-        food = await loop.run_in_executor(None, fetch_and_cache_nutrition, rec_num)
-        if not food:
-            raise HTTPException(status_code=404, detail='Food not found')
+    # fetch_and_cache_nutrition is sync (hits UMD's site) — run in thread
+    loop = asyncio.get_event_loop()
+    food = await loop.run_in_executor(None, fetch_and_cache_nutrition, rec_num)
+    if not food:
+        raise HTTPException(status_code=404, detail='Food not found')
 
-        return {
-            'success': True,
-            'data': {
-                'rec_num': food['rec_num'],
-                'name': food.get('name', ''),
-                'nutrition': food.get('nutrition', {}),
-                'allergens': food.get('allergens', ''),
-                'ingredients': food.get('ingredients', ''),
-            }
+    return {
+        'success': True,
+        'data': {
+            'rec_num': food['rec_num'],
+            'name': food.get('name', ''),
+            'nutrition': food.get('nutrition', {}),
+            'allergens': food.get('allergens', ''),
+            'ingredients': food.get('ingredients', ''),
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    }
 
 
 @router.get('/api/search')
 @limiter.limit("30/minute")
 async def search_menu(request: Request, q: str = Query(default='')):
-    try:
-        if not q:
-            raise HTTPException(status_code=400, detail='Search query required')
-        if len(q) > 100:
-            raise HTTPException(status_code=400, detail='Search query too long')
+    if not q:
+        raise HTTPException(status_code=400, detail='Search query required')
+    if len(q) > 100:
+        raise HTTPException(status_code=400, detail='Search query too long')
 
-        safe_query = re.escape(q)
-        foods = await db.foods.find(
-            {'name': {'$regex': safe_query, '$options': 'i'}},
-            {'_id': 0, 'embedding': 0}
-        ).limit(50).to_list(None)
+    safe_query = re.escape(q)
+    foods = await db.foods.find(
+        {'name': {'$regex': safe_query, '$options': 'i'}},
+        {'_id': 0, 'embedding': 0}
+    ).limit(50).to_list(None)
 
-        # Look up most recent station + dining hall for each food from menus
-        rec_nums = [f['rec_num'] for f in foods]
-        if rec_nums:
-            menu_entries = await db.menus.find(
-                {'rec_num': {'$in': rec_nums}},
-                {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1}
-            ).sort('date', -1).to_list(None)
-            # Keep only the most recent entry per rec_num
-            location_map = {}
-            for entry in menu_entries:
-                rn = entry['rec_num']
-                if rn not in location_map:
-                    hall_id = entry.get('dining_hall_id', '')
-                    hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
-                    location_map[rn] = {
-                        'station': entry.get('station', ''),
-                        'dining_hall_id': hall_id,
-                        'dining_hall_name': hall_doc['name'] if hall_doc else '',
-                    }
-            for food in foods:
-                loc = location_map.get(food['rec_num'], {})
-                food['station'] = loc.get('station', '')
-                food['dining_hall_id'] = loc.get('dining_hall_id', '')
-                food['dining_hall_name'] = loc.get('dining_hall_name', '')
+    # Look up most recent station + dining hall for each food from menus
+    rec_nums = [f['rec_num'] for f in foods]
+    if rec_nums:
+        menu_entries = await db.menus.find(
+            {'rec_num': {'$in': rec_nums}},
+            {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1}
+        ).sort('date', -1).to_list(None)
+        # Keep only the most recent entry per rec_num
+        location_map = {}
+        for entry in menu_entries:
+            rn = entry['rec_num']
+            if rn not in location_map:
+                hall_id = entry.get('dining_hall_id', '')
+                hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
+                location_map[rn] = {
+                    'station': entry.get('station', ''),
+                    'dining_hall_id': hall_id,
+                    'dining_hall_name': hall_doc['name'] if hall_doc else '',
+                }
+        for food in foods:
+            loc = location_map.get(food['rec_num'], {})
+            food['station'] = loc.get('station', '')
+            food['dining_hall_id'] = loc.get('dining_hall_id', '')
+            food['dining_hall_name'] = loc.get('dining_hall_name', '')
 
-        return {'success': True, 'query': q, 'count': len(foods), 'data': foods}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {'success': True, 'query': q, 'count': len(foods), 'data': foods}
 
 
 # ---------------------------------------------------------------------------
@@ -603,35 +579,27 @@ async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
 @router.post('/api/auth/guest')
 @limiter.limit("10/minute")
 async def auth_guest(request: Request):
-    try:
-        guest_id = f"guest_{uuid.uuid4().hex}"
-        await db.users.insert_one({
-            'user_id': guest_id,
-            'is_guest': True,
-            'created_at': datetime.now().isoformat()
-        })
-        return {'success': True, 'user_id': guest_id, 'token': _make_token(guest_id)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    guest_id = f"guest_{uuid.uuid4().hex}"
+    await db.users.insert_one({
+        'user_id': guest_id,
+        'is_guest': True,
+        'created_at': datetime.now().isoformat()
+    })
+    return {'success': True, 'user_id': guest_id, 'token': _make_token(guest_id)}
 
 
 @router.post('/api/auth/apple')
 @limiter.limit("10/minute")
 async def auth_apple(request: Request, body: AppleAuthBody = Body(...)):
-    try:
-        if not body.apple_user_id:
-            raise HTTPException(status_code=400, detail='apple_user_id required')
+    if not body.apple_user_id:
+        raise HTTPException(status_code=400, detail='apple_user_id required')
 
-        await db.users.update_one(
-            {'apple_user_id': body.apple_user_id},
-            {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
-            upsert=True
-        )
-        return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.users.update_one(
+        {'apple_user_id': body.apple_user_id},
+        {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
+        upsert=True
+    )
+    return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
 
 
 @router.post('/api/auth/upgrade')
@@ -641,38 +609,30 @@ async def upgrade_guest(
     body: AppleAuthBody = Body(...),
     user_id: str = Depends(get_current_user),
 ):
-    try:
-        if not body.apple_user_id:
-            raise HTTPException(status_code=400, detail='apple_user_id required')
-        if not user_id.startswith('guest_'):
-            raise HTTPException(status_code=400, detail='not a guest account')
+    if not body.apple_user_id:
+        raise HTTPException(status_code=400, detail='apple_user_id required')
+    if not user_id.startswith('guest_'):
+        raise HTTPException(status_code=400, detail='not a guest account')
 
-        await db.users.update_one(
-            {'apple_user_id': body.apple_user_id},
-            {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
-            upsert=True
-        )
+    await db.users.update_one(
+        {'apple_user_id': body.apple_user_id},
+        {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
+        upsert=True
+    )
 
-        # Migrate all user data
-        for coll in [db.favorites, db.station_favorites, db.preferences, db.intake]:
-            await coll.update_many({'user_id': user_id}, {'$set': {'user_id': body.apple_user_id}})
+    # Migrate all user data
+    for coll in [db.favorites, db.station_favorites, db.preferences, db.intake]:
+        await coll.update_many({'user_id': user_id}, {'$set': {'user_id': body.apple_user_id}})
 
-        await db.users.delete_one({'user_id': user_id})
+    await db.users.delete_one({'user_id': user_id})
 
-        return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
 
 
 @router.post('/api/auth/refresh')
 @limiter.limit("10/minute")
 async def refresh_token(request: Request, user_id: str = Depends(get_current_user)):
-    try:
-        return {'success': True, 'token': _make_token(user_id)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {'success': True, 'token': _make_token(user_id)}
 
 
 async def _archive_user_data(user_id: str):
@@ -688,11 +648,8 @@ async def _archive_user_data(user_id: str):
 @router.delete('/api/auth/account')
 @limiter.limit("5/minute")
 async def delete_account(request: Request, user_id: str = Depends(get_current_user)):
-    try:
-        await _archive_user_data(user_id)
-        return {'success': True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await _archive_user_data(user_id)
+    return {'success': True}
 
 
 # ---------------------------------------------------------------------------
@@ -701,33 +658,24 @@ async def delete_account(request: Request, user_id: str = Depends(get_current_us
 
 @router.get('/api/favorites')
 async def get_favorites(user_id: str = Depends(get_current_user)):
-    try:
-        favs = await db.favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
-        return {'success': True, 'data': favs}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    favs = await db.favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
+    return {'success': True, 'data': favs}
 
 
 @router.post('/api/favorites')
 async def add_favorite(body: FavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        await db.favorites.update_one(
-            {'user_id': user_id, 'rec_num': body.rec_num},
-            {'$set': {'user_id': user_id, 'rec_num': body.rec_num, 'name': body.name, 'added_at': datetime.now().isoformat()}},
-            upsert=True
-        )
-        return {'success': True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.favorites.update_one(
+        {'user_id': user_id, 'rec_num': body.rec_num},
+        {'$set': {'user_id': user_id, 'rec_num': body.rec_num, 'name': body.name, 'added_at': datetime.now().isoformat()}},
+        upsert=True
+    )
+    return {'success': True}
 
 
 @router.delete('/api/favorites')
 async def remove_favorite(body: RemoveFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        await db.favorites.delete_one({'user_id': user_id, 'rec_num': body.rec_num})
-        return {'success': True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.favorites.delete_one({'user_id': user_id, 'rec_num': body.rec_num})
+    return {'success': True}
 
 
 # ---------------------------------------------------------------------------
@@ -736,33 +684,24 @@ async def remove_favorite(body: RemoveFavoriteBody = Body(...), user_id: str = D
 
 @router.get('/api/station-favorites')
 async def get_station_favorites(user_id: str = Depends(get_current_user)):
-    try:
-        favs = await db.station_favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
-        return {'success': True, 'data': favs}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    favs = await db.station_favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
+    return {'success': True, 'data': favs}
 
 
 @router.post('/api/station-favorites')
 async def add_station_favorite(body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        await db.station_favorites.update_one(
-            {'user_id': user_id, 'station_name': body.station_name},
-            {'$set': {'user_id': user_id, 'station_name': body.station_name, 'added_at': datetime.now().isoformat()}},
-            upsert=True
-        )
-        return {'success': True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.station_favorites.update_one(
+        {'user_id': user_id, 'station_name': body.station_name},
+        {'$set': {'user_id': user_id, 'station_name': body.station_name, 'added_at': datetime.now().isoformat()}},
+        upsert=True
+    )
+    return {'success': True}
 
 
 @router.delete('/api/station-favorites')
 async def remove_station_favorite(body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        await db.station_favorites.delete_one({'user_id': user_id, 'station_name': body.station_name})
-        return {'success': True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.station_favorites.delete_one({'user_id': user_id, 'station_name': body.station_name})
+    return {'success': True}
 
 
 # ---------------------------------------------------------------------------
@@ -771,32 +710,26 @@ async def remove_station_favorite(body: StationFavoriteBody = Body(...), user_id
 
 @router.get('/api/preferences')
 async def get_preferences(user_id: str = Depends(get_current_user)):
-    try:
-        prefs = await db.preferences.find_one({'user_id': user_id}, {'_id': 0})
-        if not prefs:
-            prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
-        return {'success': True, 'data': prefs}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    prefs = await db.preferences.find_one({'user_id': user_id}, {'_id': 0})
+    if not prefs:
+        prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
+    return {'success': True, 'data': prefs}
 
 
 @router.put('/api/preferences')
 async def update_preferences(body: PreferencesBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        await db.preferences.update_one(
-            {'user_id': user_id},
-            {'$set': {
-                'user_id': user_id,
-                'vegetarian': body.vegetarian,
-                'vegan': body.vegan,
-                'allergens': body.allergens,
-                'cuisine_prefs': body.cuisine_prefs,
-            }},
-            upsert=True
-        )
-        return {'success': True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.preferences.update_one(
+        {'user_id': user_id},
+        {'$set': {
+            'user_id': user_id,
+            'vegetarian': body.vegetarian,
+            'vegan': body.vegan,
+            'allergens': body.allergens,
+            'cuisine_prefs': body.cuisine_prefs,
+        }},
+        upsert=True
+    )
+    return {'success': True}
 
 
 # ---------------------------------------------------------------------------
@@ -805,56 +738,43 @@ async def update_preferences(body: PreferencesBody = Body(...), user_id: str = D
 
 @router.get('/api/intake')
 async def get_intake(date: Optional[str] = Query(default=None), user_id: str = Depends(get_current_user)):
-    try:
-        query: dict = {'user_id': user_id}
-        if date:
-            query['date'] = date
-        items = await db.intake.find(query, {'_id': 0}).to_list(None)
-        return {'success': True, 'data': items}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    query: dict = {'user_id': user_id}
+    if date:
+        query['date'] = date
+    items = await db.intake.find(query, {'_id': 0}).to_list(None)
+    return {'success': True, 'data': items}
 
 
 @router.post('/api/intake')
 async def log_intake(body: IntakeBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        if not body.rec_num:
-            raise HTTPException(status_code=400, detail='rec_num required')
+    if not body.rec_num:
+        raise HTTPException(status_code=400, detail='rec_num required')
 
-        await db.intake.insert_one({
-            'user_id': user_id,
-            'rec_num': body.rec_num,
-            'name': body.name,
-            'date': body.date,
-            'meal_period': body.meal_period,
-            'calories': int(body.calories),
-            'protein_g': float(body.protein_g),
-            'carbs_g': float(body.carbs_g),
-            'fat_g': float(body.fat_g),
-            'logged_at': datetime.now().isoformat(),
-        })
-        return {'success': True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.intake.insert_one({
+        'user_id': user_id,
+        'rec_num': body.rec_num,
+        'name': body.name,
+        'date': body.date,
+        'meal_period': body.meal_period,
+        'calories': int(body.calories),
+        'protein_g': float(body.protein_g),
+        'carbs_g': float(body.carbs_g),
+        'fat_g': float(body.fat_g),
+        'logged_at': datetime.now().isoformat(),
+    })
+    return {'success': True}
 
 
 @router.delete('/api/intake')
 async def remove_intake(body: RemoveIntakeBody = Body(...), user_id: str = Depends(get_current_user)):
-    try:
-        if not body.rec_num:
-            raise HTTPException(status_code=400, detail='rec_num required')
+    if not body.rec_num:
+        raise HTTPException(status_code=400, detail='rec_num required')
 
-        query: dict = {'user_id': user_id, 'rec_num': body.rec_num}
-        if body.date:
-            query['date'] = body.date
-        if body.logged_at:
-            query['logged_at'] = body.logged_at
+    query: dict = {'user_id': user_id, 'rec_num': body.rec_num}
+    if body.date:
+        query['date'] = body.date
+    if body.logged_at:
+        query['logged_at'] = body.logged_at
 
-        await db.intake.delete_one(query)
-        return {'success': True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    await db.intake.delete_one(query)
+    return {'success': True}
