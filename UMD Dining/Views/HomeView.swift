@@ -8,9 +8,10 @@ struct HomeView: View {
     @State private var showSearch = false
     @State private var showFilter = false
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var navPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             VStack(spacing: 0) {
                 header
                 mealPicker
@@ -26,8 +27,14 @@ struct HomeView: View {
             }
             .onChange(of: tabSelection) {
                 if tabSelection == myTab {
+                    navPath = NavigationPath()
+                    showSearch = false
+                    showFilter = false
                     withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
                 }
+            }
+            .onChange(of: viewModel.selectedMealPeriod) {
+                withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
             }
         }
     }

@@ -12,6 +12,7 @@ struct TrackerView: View {
     @State private var animateCharts = false
     @State private var entries: [TrackedEntry] = []
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var navPath = NavigationPath()
 
     private var totalCalories: Int {
         entries.reduce(0) { $0 + $1.calories }
@@ -42,7 +43,7 @@ struct TrackerView: View {
     private var fatMet: Bool { tracker.fatGoal > 0 && Int(totalFat) >= tracker.fatGoal }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             Group {
                 if entries.isEmpty {
                     emptyState
@@ -93,6 +94,7 @@ struct TrackerView: View {
         }
         .onChange(of: tabSelection) {
             if tabSelection == myTab {
+                navPath = NavigationPath()
                 selectedDate = Date()
                 loadEntries()
                 withAnimation { scrollProxy?.scrollTo("trackerTop", anchor: .top) }

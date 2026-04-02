@@ -16,6 +16,7 @@ struct ProfileView: View {
     @State private var foodsToShow = 10
     @State private var stationsToShow = 10
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var navPath = NavigationPath()
 
     private let allergenOptions = [
         ("Contains dairy", "Dairy"),
@@ -28,7 +29,7 @@ struct ProfileView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 16) {
@@ -231,6 +232,7 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .onChange(of: tabSelection) {
                 if tabSelection == myTab {
+                    navPath = NavigationPath()
                     withAnimation { scrollProxy?.scrollTo("profileTop", anchor: .top) }
                 }
             }
