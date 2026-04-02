@@ -6,6 +6,7 @@ struct NutritionDetailView: View {
     let foodName: String
     var station: String? = nil
     var diningHallName: String? = nil
+    var source: String = "unknown"
     @State private var viewModel = NutritionViewModel()
     @Environment(FavoritesManager.self) private var favorites
     @Environment(NutritionTrackerManager.self) private var tracker
@@ -74,6 +75,7 @@ struct NutritionDetailView: View {
         }
         .task {
             await viewModel.loadNutrition(recNum: recNum)
+            DiningAPIService.shared.trackItemView(recNum: recNum, foodName: foodName, source: source)
         }
         .sheet(isPresented: $showServingPicker, onDismiss: { servingCount = 1.0 }) {
             if let info = viewModel.nutritionInfo {
@@ -161,7 +163,7 @@ struct NutritionDetailView: View {
                     }
                 }
                 .padding()
-                .background(Color.umdRed.opacity(0.08))
+                .background(Color.umdRed.opacity(0.15))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal)
 
@@ -237,7 +239,7 @@ struct NutritionDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(color.opacity(0.1))
+        .background(color.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 

@@ -169,7 +169,7 @@ struct HomeView: View {
                             }
                             .buttonStyle(.plain)
                         case .menuItem(let item):
-                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId))) {
+                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")) {
                                 FoodItemRow(
                                     item: item,
                                     diningHallName: viewModel.diningHallName(for: item.diningHallId)

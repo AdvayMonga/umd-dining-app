@@ -125,6 +125,15 @@ class RemoveIntakeBody(BaseModel):
     date: str = ''
     logged_at: str = ''
 
+class ItemViewBody(BaseModel):
+    rec_num: str
+    food_name: str = ''
+    source: str = ''
+
+class SearchQueryBody(BaseModel):
+    query: str
+    result_count: int = 0
+
 
 # ---------------------------------------------------------------------------
 # Public endpoints
@@ -372,6 +381,47 @@ async def search_menu(request: Request, q: str = Query(default='')):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Engagement tracking
+# ---------------------------------------------------------------------------
+
+@router.post('/api/track/item-view')
+@limiter.limit("120/minute")
+async def track_item_view(
+    request: Request,
+    body: ItemViewBody,
+    user_id: Optional[str] = Depends(get_optional_user),
+):
+    allowed_sources = {'home', 'station', 'search', 'profile_favorites', 'tracker'}
+    source = body.source if body.source in allowed_sources else 'unknown'
+    await db.item_views.insert_one({
+        'user_id': user_id,
+        'rec_num': body.rec_num,
+        'food_name': body.food_name,
+        'source': source,
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+    })
+    return {'success': True}
+
+
+@router.post('/api/track/search-query')
+@limiter.limit("60/minute")
+async def track_search_query(
+    request: Request,
+    body: SearchQueryBody,
+    user_id: Optional[str] = Depends(get_optional_user),
+):
+    if len(body.query) > 200:
+        return {'success': True}
+    await db.search_queries.insert_one({
+        'user_id': user_id,
+        'query': body.query,
+        'result_count': body.result_count,
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+    })
+    return {'success': True}
 
 
 # ---------------------------------------------------------------------------

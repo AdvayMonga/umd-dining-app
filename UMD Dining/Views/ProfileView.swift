@@ -128,7 +128,7 @@ struct ProfileView: View {
                             let sorted = favorites.favoriteFoods.sorted(by: { $0.value < $1.value })
                             let visible = Array(sorted.prefix(foodsToShow))
                             ForEach(visible, id: \.key) { recNum, name in
-                                NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name)) {
+                                NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name, source: "profile_favorites")) {
                                     HStack {
                                         Text(name)
                                             .font(.subheadline)

@@ -83,7 +83,7 @@ struct StationPageView: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredItems) { item in
-                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: diningHallName)) {
+                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: diningHallName, source: "station")) {
                                 FoodItemRow(item: item, diningHallName: diningHallName)
                             }
                             .buttonStyle(.plain)

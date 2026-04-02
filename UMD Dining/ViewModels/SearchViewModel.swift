@@ -58,6 +58,7 @@ class SearchViewModel {
             do {
                 results = try await DiningAPIService.shared.searchFoods(query: trimmed)
                 errorMessage = nil
+                DiningAPIService.shared.trackSearchQuery(query: trimmed, resultCount: results.count)
             } catch is CancellationError {
                 // Ignore cancellation
             } catch let error as URLError where error.code == .cancelled {

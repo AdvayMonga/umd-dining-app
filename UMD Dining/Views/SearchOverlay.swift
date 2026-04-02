@@ -100,7 +100,7 @@ struct SearchOverlay: View {
                                         .padding(.horizontal, 4)
 
                                     ForEach(viewModel.results) { item in
-                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station.isEmpty ? nil : item.station, diningHallName: item.diningHallName.isEmpty ? nil : item.diningHallName)) {
+                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station.isEmpty ? nil : item.station, diningHallName: item.diningHallName.isEmpty ? nil : item.diningHallName, source: "search")) {
                                             HStack(spacing: 12) {
                                                 VStack(alignment: .leading, spacing: 4) {
                                                     Text(item.name)

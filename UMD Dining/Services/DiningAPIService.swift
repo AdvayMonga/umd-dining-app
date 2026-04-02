@@ -299,6 +299,36 @@ actor DiningAPIService {
         _ = try await delete("\(baseURL)/intake", body: body, token: token)
     }
 
+    // MARK: - Engagement Tracking (fire-and-forget)
+
+    nonisolated func trackItemView(recNum: String, foodName: String, source: String) {
+        Task.detached(priority: .utility) {
+            await self._fireAndForget("track/item-view", body: [
+                "rec_num": recNum, "food_name": foodName, "source": source
+            ])
+        }
+    }
+
+    nonisolated func trackSearchQuery(query: String, resultCount: Int) {
+        Task.detached(priority: .utility) {
+            await self._fireAndForget("track/search-query", body: [
+                "query": query, "result_count": resultCount
+            ])
+        }
+    }
+
+    private func _fireAndForget(_ path: String, body: [String: Any]) async {
+        guard let url = URL(string: "\(baseURL)/\(path)") else { return }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = await AuthManager.shared.jwtToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     // MARK: - Networking
 
     private func fetch(_ urlString: String, token: String? = nil) async throws -> Data {

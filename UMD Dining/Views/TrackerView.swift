@@ -327,7 +327,8 @@ struct TrackerView: View {
                 NavigationLink(destination: NutritionDetailView(
                     recNum: entry.recNum,
                     foodName: entry.foodName,
-                    diningHallName: entry.diningHall
+                    diningHallName: entry.diningHall,
+                    source: "tracker"
                 )) {
                     loggedItemRow(entry)
                 }

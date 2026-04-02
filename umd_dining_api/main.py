@@ -47,6 +47,11 @@ async def lifespan(app: FastAPI):
 
     await db.intake.create_index([('user_id', 1), ('date', 1)])
 
+    # Engagement tracking indexes
+    await db.item_views.create_index([('user_id', 1), ('timestamp', -1)])
+    await db.item_views.create_index([('rec_num', 1), ('timestamp', -1)])
+    await db.search_queries.create_index([('user_id', 1), ('timestamp', -1)])
+
     yield
 
     # Shutdown

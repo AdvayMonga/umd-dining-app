@@ -53,7 +53,7 @@ struct StationHeaderRow: View {
         .padding(.vertical, 2)
         .padding(.leading, 12)
         .padding(.trailing, 4)
-        .background(Color.umdRed.opacity(0.12))
+        .background(Color.umdRed.opacity(0.20))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.3), lineWidth: 1))
     }
