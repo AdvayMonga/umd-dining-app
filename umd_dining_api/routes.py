@@ -249,7 +249,7 @@ async def get_ranked_menu(
                     'foreignField': 'rec_num',
                     'as': 'menu_entry',
                 }},
-                {'$unwind': {'path': '$menu_entry', 'preserveNullAndEmpty': False}},
+                {'$unwind': {'path': '$menu_entry', 'preserveNullAndEmptyArrays': False}},
                 {'$group': {'_id': '$menu_entry.dining_hall_id', 'count': {'$sum': 1}}},
             ]
             result = {}
