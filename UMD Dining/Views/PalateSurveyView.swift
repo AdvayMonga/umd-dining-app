@@ -11,6 +11,7 @@ struct PalateSurveyView: View {
     var onComplete: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
+    @State private var showAllergens = false
 
     private let cuisines: [CuisineOption] = [
         CuisineOption(id: "comfort", label: "American/Comfort", icon: "🍔", description: "Burgers, fries, mac & cheese"),
@@ -51,8 +52,7 @@ struct PalateSurveyView: View {
 
             Button {
                 UserPreferences.shared.cuisinePrefs = Array(selected)
-                onComplete()
-                dismiss()
+                showAllergens = true
             } label: {
                 Text("Continue")
                     .font(.headline)
@@ -69,6 +69,12 @@ struct PalateSurveyView: View {
         .background(Color(.systemGroupedBackground))
         .onAppear {
             selected = Set(UserPreferences.shared.cuisinePrefs)
+        }
+        .fullScreenCover(isPresented: $showAllergens) {
+            AllergenSurveyView {
+                onComplete()
+                dismiss()
+            }
         }
     }
 
