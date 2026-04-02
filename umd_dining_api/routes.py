@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import re
 import time
 import threading
@@ -585,6 +586,26 @@ async def upgrade_guest(
 async def refresh_token(request: Request, user_id: str = Depends(get_current_user)):
     try:
         return {'success': True, 'token': _make_token(user_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _archive_user_data(user_id: str):
+    """Anonymize all behavioral data for ML training, then delete the identity."""
+    anon_id = 'anon_' + hashlib.sha256(user_id.encode()).hexdigest()[:16]
+
+    for coll in [db.favorites, db.station_favorites, db.preferences, db.intake, db.item_views, db.search_queries]:
+        await coll.update_many({'user_id': user_id}, {'$set': {'user_id': anon_id}})
+
+    await db.users.delete_one({'user_id': user_id})
+
+
+@router.delete('/api/auth/account')
+@limiter.limit("5/minute")
+async def delete_account(request: Request, user_id: str = Depends(get_current_user)):
+    try:
+        await _archive_user_data(user_id)
+        return {'success': True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

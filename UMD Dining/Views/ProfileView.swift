@@ -10,6 +10,8 @@ struct ProfileView: View {
     @State private var isUpgrading = false
     @State private var upgradeError: String?
     @State private var showSignOutAlert = false
+    @State private var showDeleteAlert = false
+    @State private var isDeleting = false
     @State private var showCuisinePrefs = false
     @State private var foodsToShow = 10
     @State private var stationsToShow = 10
@@ -63,6 +65,14 @@ struct ProfileView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3), lineWidth: 1))
                                 .disabled(isUpgrading)
+
+                                Button {
+                                    showDeleteAlert = true
+                                } label: {
+                                    Text("Delete Account")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
                             }
                         }
                     } else {
@@ -240,6 +250,11 @@ struct ProfileView: View {
                     signOutOverlay
                 }
             }
+            .overlay {
+                if showDeleteAlert {
+                    deleteAccountOverlay
+                }
+            }
             .alert("Error", isPresented: Binding(
                 get: { upgradeError != nil },
                 set: { if !$0 { upgradeError = nil } }
@@ -266,17 +281,26 @@ struct ProfileView: View {
                 }
             }
             Spacer()
-            Button {
-                showSignOutAlert = true
-            } label: {
-                Text("Sign Out")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.umdRed)
-                    .clipShape(Capsule())
+            VStack(spacing: 8) {
+                Button {
+                    showSignOutAlert = true
+                } label: {
+                    Text("Sign Out")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.umdRed)
+                        .clipShape(Capsule())
+                }
+                Button {
+                    showDeleteAlert = true
+                } label: {
+                    Text("Delete Account")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
         }
         .padding(16)
@@ -317,6 +341,62 @@ struct ProfileView: View {
 
                 Button {
                     showSignOutAlert = false
+                } label: {
+                    Text("Cancel")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(24)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(radius: 20)
+            .padding(.horizontal, 40)
+        }
+    }
+
+    // MARK: - Delete Account Overlay
+
+    private var deleteAccountOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture { showDeleteAlert = false }
+
+            VStack(spacing: 16) {
+                Text("Delete Account?")
+                    .font(.title3)
+                    .fontWeight(.bold)
+
+                Text("This will permanently delete your account and all your data. This cannot be undone.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    showDeleteAlert = false
+                    isDeleting = true
+                    Task {
+                        do {
+                            try await DiningAPIService.shared.deleteAccount()
+                        } catch {
+                            print("Delete account API error: \(error)")
+                        }
+                        AuthManager.shared.signOut()
+                        isDeleting = false
+                    }
+                } label: {
+                    Text("Delete Account")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.red)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                Button {
+                    showDeleteAlert = false
                 } label: {
                     Text("Cancel")
                         .font(.subheadline)

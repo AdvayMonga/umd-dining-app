@@ -299,6 +299,11 @@ actor DiningAPIService {
         _ = try await delete("\(baseURL)/intake", body: body, token: token)
     }
 
+    func deleteAccount() async throws {
+        let token = await AuthManager.shared.jwtToken
+        _ = try await delete("\(baseURL)/auth/account", body: [:], token: token)
+    }
+
     // MARK: - Engagement Tracking (fire-and-forget)
 
     nonisolated func trackItemView(recNum: String, foodName: String, source: String) {
