@@ -51,6 +51,25 @@ async def _get_trending():
     return result
 
 
+# --- Global view counts cache (5-min TTL) ---
+_global_views_cache: dict = {'data': {}, 'expires': 0}
+
+async def _get_global_views():
+    now = time.time()
+    if now < _global_views_cache['expires']:
+        return _global_views_cache['data']
+    pipeline = [
+        {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+        {'$limit': 100},
+    ]
+    result = {}
+    async for doc in db.item_views.aggregate(pipeline):
+        result[doc['_id']] = doc['count']
+    _global_views_cache.update({'data': result, 'expires': now + 300})
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Auth dependencies
 # ---------------------------------------------------------------------------
@@ -224,38 +243,36 @@ async def get_ranked_menu(
         return result
 
     async def fetch_global_view_counts():
-        """Get view counts across all users for popularity signal."""
-        pipeline = [
-            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-            {'$sort': {'count': -1}},
-            {'$limit': 100},
-        ]
-        result = {}
-        async for doc in db.item_views.aggregate(pipeline):
-            result[doc['_id']] = doc['count']
-        return result
+        """Get view counts across all users (cached 5 min like trending)."""
+        return await _get_global_views()
 
     async def fetch_recent_hall_interest():
         """Get dining halls the user has recently engaged with."""
         if not user_id:
             return {}
-        pipeline = [
-            {'$match': {'user_id': user_id}},
-            {'$sort': {'timestamp': -1}},
-            {'$limit': 50},
-            {'$lookup': {
-                'from': 'menus',
-                'localField': 'rec_num',
-                'foreignField': 'rec_num',
-                'as': 'menu_entry',
-            }},
-            {'$unwind': {'path': '$menu_entry', 'preserveNullAndEmptyArrays': False}},
-            {'$group': {'_id': '$menu_entry.dining_hall_id', 'count': {'$sum': 1}}},
-        ]
+        # Simple approach: get recent views, look up hall from the source field
+        # or from the rec_num -> menu mapping we already have
+        docs = await db.item_views.find(
+            {'user_id': user_id},
+            {'_id': 0, 'rec_num': 1}
+        ).sort('timestamp', -1).limit(50).to_list(None)
+        if not docs:
+            return {}
+        # Count which dining halls these rec_nums belong to using today's menu
+        view_rec_nums = [d['rec_num'] for d in docs]
+        menu_docs = await db.menus.find(
+            {'rec_num': {'$in': view_rec_nums}, 'date': date},
+            {'_id': 0, 'rec_num': 1, 'dining_hall_id': 1}
+        ).to_list(None)
+        hall_map = {}
+        for m in menu_docs:
+            if m['rec_num'] not in hall_map:
+                hall_map[m['rec_num']] = m['dining_hall_id']
         result = {}
-        async for doc in db.item_views.aggregate(pipeline):
-            if doc['_id']:
-                result[doc['_id']] = doc['count']
+        for d in docs:
+            hall_id = hall_map.get(d['rec_num'])
+            if hall_id:
+                result[hall_id] = result.get(hall_id, 0) + 1
         return result
 
     (menu_entries, fav_rec_nums, fav_stations, user_prefs,
