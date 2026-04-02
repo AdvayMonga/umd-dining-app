@@ -456,33 +456,38 @@ async def get_similar_foods(
         return {'success': True, 'data': []}
 
     target_vec = np.asarray(target['embedding'], dtype=np.float32)
+    target_norm = np.linalg.norm(target_vec)
 
-    # Phase 2: Fetch ONLY rec_num + embedding for candidates (minimal payload)
-    candidate_filter = {'rec_num': {'$ne': rec_num}, 'embedding': {'$exists': True}}
+    # Phase 2: Determine candidate pool
+    # If date is provided (item unavailable today), only search today's menu
+    # If no date (item available today), search all foods
     if date:
         menu_rec_nums = await db.menus.distinct('rec_num', {'date': date})
-        if not menu_rec_nums:
+        candidate_rns = [r for r in menu_rec_nums if r != rec_num]
+        if not candidate_rns:
             return {'success': True, 'data': []}
-        candidate_filter['rec_num'] = {'$in': [r for r in menu_rec_nums if r != rec_num]}
-
-    candidates = await db.foods.find(
-        candidate_filter, {'_id': 0, 'rec_num': 1, 'embedding': 1}
-    ).to_list(None)
+        candidates = await db.foods.find(
+            {'rec_num': {'$in': candidate_rns}, 'embedding': {'$exists': True}},
+            {'_id': 0, 'rec_num': 1, 'embedding': 1}
+        ).to_list(None)
+    else:
+        # All foods — but only fetch rec_num + embedding (minimal)
+        candidates = await db.foods.find(
+            {'rec_num': {'$ne': rec_num}, 'embedding': {'$exists': True}},
+            {'_id': 0, 'rec_num': 1, 'embedding': 1}
+        ).to_list(None)
 
     if not candidates:
         return {'success': True, 'data': []}
 
-    # Phase 3: Vectorized similarity (single numpy operation)
+    # Phase 3: Vectorized similarity
     rec_nums_list = [c['rec_num'] for c in candidates]
     emb_matrix = np.asarray([c['embedding'] for c in candidates], dtype=np.float32)
     norms = np.linalg.norm(emb_matrix, axis=1)
-    target_norm = np.linalg.norm(target_vec)
     sims = np.dot(emb_matrix, target_vec) / (norms * target_norm + 1e-10)
 
-    # Get top indices
+    # Top indices — always take at least 3, then up to limit if >= 0.75
     top_indices = np.argsort(sims)[::-1][:limit]
-
-    # Apply threshold: always top 3, then up to 2 more if >= 0.75
     selected = []
     for i, idx in enumerate(top_indices):
         sim = float(sims[idx])
@@ -490,10 +495,18 @@ async def get_similar_foods(
             break
         selected.append((rec_nums_list[idx], sim))
 
+    # Guarantee at least 3 results if candidates exist
+    if len(selected) < 3 and len(top_indices) >= 3:
+        for idx in top_indices[:3]:
+            rn = rec_nums_list[idx]
+            if not any(r == rn for r, _ in selected):
+                selected.append((rn, float(sims[idx])))
+        selected = selected[:3]
+
     if not selected:
         return {'success': True, 'data': []}
 
-    # Phase 4: Fetch full food data ONLY for the top results
+    # Phase 4: Fetch full food data for top results
     top_rec_nums = [rn for rn, _ in selected]
     food_docs = await db.foods.find(
         {'rec_num': {'$in': top_rec_nums}},
@@ -501,7 +514,7 @@ async def get_similar_foods(
     ).to_list(None)
     food_map = {f['rec_num']: f for f in food_docs}
 
-    # Phase 5: Look up station/dining hall
+    # Phase 5: Look up station/dining hall (batch lookup, no individual queries)
     location_map = {}
     menu_filter = {'rec_num': {'$in': top_rec_nums}}
     if date:
@@ -511,15 +524,23 @@ async def get_similar_foods(
         {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'dietary_icons': 1,
          'date': 1, 'meal_period': 1}
     ).sort('date', -1).to_list(None)
+
+    # Pre-load hall names (only 3 halls, avoids N individual lookups)
+    hall_names = {}
+    for entry in menu_entries:
+        hall_id = entry.get('dining_hall_id', '')
+        if hall_id and hall_id not in hall_names:
+            hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
+            hall_names[hall_id] = hall_doc['name'] if hall_doc else ''
+
     for entry in menu_entries:
         rn = entry['rec_num']
         if rn not in location_map:
             hall_id = entry.get('dining_hall_id', '')
-            hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
             location_map[rn] = {
                 'station': entry.get('station', ''),
                 'dining_hall_id': hall_id,
-                'dining_hall_name': hall_doc['name'] if hall_doc else '',
+                'dining_hall_name': hall_names.get(hall_id, ''),
                 'dietary_icons': entry.get('dietary_icons', []),
                 'date': entry.get('date', ''),
                 'meal_period': entry.get('meal_period', ''),
@@ -543,6 +564,7 @@ async def get_similar_foods(
             'allergens': food.get('allergens', ''),
             'ingredients': food.get('ingredients', ''),
             'tag': None,
+            'tags': [],
         })
 
     # Cache for 10 minutes; evict stale entries to prevent unbounded growth

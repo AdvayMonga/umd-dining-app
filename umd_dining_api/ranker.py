@@ -10,6 +10,7 @@ Tag is assigned based on the highest-priority signal that fired.
 """
 
 import random
+import re
 from embeddings import cosine_similarity, compute_centroid
 
 
@@ -122,6 +123,8 @@ def rank_items(
         dining_hall_id = entry.get('dining_hall_id', '')
         dietary_icons = entry.get('dietary_icons', [])
         is_side = 'side' in station.lower()
+        # Merge sides with parent station for display (e.g. "Grill Sides" → "Grill")
+        display_station = re.sub(r'\s+Sides?\s*$', '', station, flags=re.IGNORECASE) if is_side else station
 
         # --- Compute additive score ---
         score = 0
@@ -200,13 +203,13 @@ def rank_items(
                 item_embedding = food.get('embedding')
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
-                    if sim >= 0.88:
+                    if sim >= 0.73:
                         score += 45
                         signals.add('similar_to_favorites')
-                    elif sim >= 0.82:
+                    elif sim >= 0.65:
                         score += 30
                         signals.add('similar_to_favorites')
-                    elif sim >= 0.76:
+                    elif sim >= 0.55:
                         score += 18
                         signals.add('somewhat_similar')
 
@@ -228,7 +231,7 @@ def rank_items(
             tags.append('Favorite')
         if 'trending' in signals:
             tags.append('Trending')
-        if 'similar_to_favorites' in signals and 'favorite' not in signals:
+        if ('similar_to_favorites' in signals or 'somewhat_similar' in signals) and 'favorite' not in signals:
             tags.append('Recommended')
         if 'high_protein' in signals or 'protein_ratio' in signals:
             tags.append('High Protein')
@@ -241,7 +244,7 @@ def rank_items(
             'dining_hall_id': entry['dining_hall_id'],
             'date': entry['date'],
             'meal_period': entry.get('meal_period', 'Unknown'),
-            'station': station or 'Unknown',
+            'station': display_station or 'Unknown',
             'dietary_icons': dietary_icons,
             'nutrition_fetched': food.get('nutrition_fetched', False),
             'nutrition': food.get('nutrition', {}),

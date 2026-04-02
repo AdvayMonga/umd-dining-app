@@ -62,7 +62,10 @@ struct HomeView: View {
         .padding(.horizontal)
         .padding(.vertical, 12)
         .sheet(isPresented: $showFilter, onDismiss: {
-            Task { await viewModel.loadMenus() }
+            Task {
+                await viewModel.loadMenus()
+                withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
+            }
         }) {
             FilterOverlay(
                 selectedHallIds: $viewModel.selectedHallIds,
@@ -75,7 +78,9 @@ struct HomeView: View {
             )
             .presentationDetents([.large])
         }
-        .fullScreenCover(isPresented: $showSearch) {
+        .fullScreenCover(isPresented: $showSearch, onDismiss: {
+            withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
+        }) {
             SearchOverlay(
                 menuItems: viewModel.allItems,
                 hallNames: viewModel.diningHallNames,

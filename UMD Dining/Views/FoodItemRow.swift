@@ -324,26 +324,3 @@ struct ServingPickerSheet: View {
         })?.value
     }
 }
-
-#Preview {
-    FoodItemRow(
-        item: MenuItem(
-            name: "Grilled Chicken Breast",
-            recNum: "12345",
-            diningHallId: "19",
-            date: "3/18/2026",
-            mealPeriod: "Lunch",
-            station: "Grill",
-            dietaryIcons: ["vegetarian", "Contains dairy"],
-            nutritionFetched: false,
-            allergens: nil,
-            ingredients: nil,
-            nutrition: nil,
-            tag: "High Protein"
-        ),
-        diningHallName: "Yahentamitsi Dining Hall"
-    )
-    .environment(FavoritesManager.shared)
-    .environment(NutritionTrackerManager.shared)
-    .modelContainer(for: [DailyLog.self, TrackedEntry.self])
-}
