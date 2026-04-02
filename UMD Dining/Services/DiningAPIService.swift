@@ -173,6 +173,18 @@ actor DiningAPIService {
         return response.data
     }
 
+    func fetchSimilarFoods(recNum: String, date: String? = nil) async throws -> [MenuItem] {
+        let encoded = recNum.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? recNum
+        var url = "\(baseURL)/nutrition/similar?rec_num=\(encoded)"
+        if let date = date {
+            let encodedDate = date.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? date
+            url += "&date=\(encodedDate)"
+        }
+        let data = try await fetch(url)
+        let response = try JSONDecoder().decode(MenuResponse.self, from: data)
+        return response.data
+    }
+
     // MARK: - Auth
 
     func registerGuest() async throws -> (userId: String, token: String) {

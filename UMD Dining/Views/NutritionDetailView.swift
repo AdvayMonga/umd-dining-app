@@ -23,6 +23,7 @@ struct NutritionDetailView: View {
     private let keyNutrients = ["Cholesterol", "Sodium", "Total Sugars", "Saturated Fat", "Calcium", "Potassium"]
 
     @State private var showAllNutrition = false
+    @State private var showSimilarFoods = false
 
     var body: some View {
         Group {
@@ -75,6 +76,10 @@ struct NutritionDetailView: View {
         .task {
             await viewModel.loadNutrition(recNum: recNum)
             DiningAPIService.shared.trackItemView(recNum: recNum, foodName: foodName, source: source)
+        }
+        .task {
+            let dateForSimilar: String? = (station == nil) ? todayDateString() : nil
+            await viewModel.loadSimilarFoods(recNum: recNum, date: dateForSimilar)
         }
         .fullScreenCover(isPresented: $showServingPicker) {
             if let info = viewModel.nutritionInfo {
@@ -178,6 +183,9 @@ struct NutritionDetailView: View {
                     // Macros bar
                     macrosSection(info.nutrition)
 
+                    // Similar foods dropdown
+                    similarFoodsSection
+
                     // Full nutrition table
                     nutritionTable(info.nutrition)
                 }
@@ -242,6 +250,66 @@ struct NutritionDetailView: View {
         .padding()
         .background(color.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private static let hallNames: [String: String] = [
+        "19": "Yahentamitsi Dining Hall",
+        "51": "251 North",
+        "16": "South Campus Diner",
+    ]
+
+    private var similarFoodsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) { showSimilarFoods.toggle() }
+            } label: {
+                HStack {
+                    Text("Similar Foods")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    if viewModel.similarFoodsLoading {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    } else if let foods = viewModel.similarFoods {
+                        Text("(\(foods.count))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: showSimilarFoods ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                }
+                .foregroundStyle(Color.umdRed)
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            }
+
+            if showSimilarFoods, let foods = viewModel.similarFoods, !foods.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(foods) { item in
+                        let hallName = Self.hallNames[item.diningHallId] ?? ""
+                        NavigationLink(destination: NutritionDetailView(
+                            recNum: item.recNum,
+                            foodName: item.name,
+                            station: item.station.isEmpty ? nil : item.station,
+                            diningHallName: hallName.isEmpty ? nil : hallName,
+                            source: "similar"
+                        )) {
+                            FoodItemRow(item: item, diningHallName: hallName)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func todayDateString() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d/yyyy"
+        return formatter.string(from: Date())
     }
 
     private func nutritionTable(_ nutrition: [String: String]) -> some View {

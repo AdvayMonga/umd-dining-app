@@ -32,6 +32,9 @@ def _ensure_string(value, field_name='field'):
 # --- Trending cache (global, 5-min TTL) ---
 _trending_cache: dict = {'data': set(), 'expires': 0}
 
+# --- Similar foods cache (10-min TTL, keyed by (rec_num, date)) ---
+_similar_cache: dict = {}  # {(rec_num, date): {'data': [...], 'expires': float}}
+
 async def _get_trending():
     now = time.time()
     if now < _trending_cache['expires']:
@@ -403,6 +406,134 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
     }
 
 
+@router.get('/api/nutrition/similar')
+@limiter.limit("30/minute")
+async def get_similar_foods(
+    request: Request,
+    rec_num: str = Query(default=None),
+    limit: int = Query(default=5, le=5),
+    date: Optional[str] = Query(default=None),
+):
+    if not rec_num:
+        raise HTTPException(status_code=400, detail='rec_num required')
+
+    # Check cache (10-min TTL)
+    cache_key = (rec_num, date or '')
+    now = time.time()
+    cached = _similar_cache.get(cache_key)
+    if cached and now < cached['expires']:
+        return {'success': True, 'data': cached['data']}
+
+    import numpy as np
+
+    # Phase 1: Fetch target embedding
+    target = await db.foods.find_one(
+        {'rec_num': rec_num, 'embedding': {'$exists': True}},
+        {'embedding': 1, '_id': 0}
+    )
+    if not target or not target.get('embedding'):
+        return {'success': True, 'data': []}
+
+    target_vec = np.asarray(target['embedding'], dtype=np.float32)
+
+    # Phase 2: Fetch ONLY rec_num + embedding for candidates (minimal payload)
+    candidate_filter = {'rec_num': {'$ne': rec_num}, 'embedding': {'$exists': True}}
+    if date:
+        menu_rec_nums = await db.menus.distinct('rec_num', {'date': date})
+        if not menu_rec_nums:
+            return {'success': True, 'data': []}
+        candidate_filter['rec_num'] = {'$in': [r for r in menu_rec_nums if r != rec_num]}
+
+    candidates = await db.foods.find(
+        candidate_filter, {'_id': 0, 'rec_num': 1, 'embedding': 1}
+    ).to_list(None)
+
+    if not candidates:
+        return {'success': True, 'data': []}
+
+    # Phase 3: Vectorized similarity (single numpy operation)
+    rec_nums_list = [c['rec_num'] for c in candidates]
+    emb_matrix = np.asarray([c['embedding'] for c in candidates], dtype=np.float32)
+    norms = np.linalg.norm(emb_matrix, axis=1)
+    target_norm = np.linalg.norm(target_vec)
+    sims = np.dot(emb_matrix, target_vec) / (norms * target_norm + 1e-10)
+
+    # Get top indices
+    top_indices = np.argsort(sims)[::-1][:limit]
+
+    # Apply threshold: always top 3, then up to 2 more if >= 0.75
+    selected = []
+    for i, idx in enumerate(top_indices):
+        sim = float(sims[idx])
+        if i >= 3 and sim < 0.75:
+            break
+        selected.append((rec_nums_list[idx], sim))
+
+    if not selected:
+        return {'success': True, 'data': []}
+
+    # Phase 4: Fetch full food data ONLY for the top results
+    top_rec_nums = [rn for rn, _ in selected]
+    food_docs = await db.foods.find(
+        {'rec_num': {'$in': top_rec_nums}},
+        {'_id': 0, 'embedding': 0}
+    ).to_list(None)
+    food_map = {f['rec_num']: f for f in food_docs}
+
+    # Phase 5: Look up station/dining hall
+    location_map = {}
+    menu_filter = {'rec_num': {'$in': top_rec_nums}}
+    if date:
+        menu_filter['date'] = date
+    menu_entries = await db.menus.find(
+        menu_filter,
+        {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'dietary_icons': 1,
+         'date': 1, 'meal_period': 1}
+    ).sort('date', -1).to_list(None)
+    for entry in menu_entries:
+        rn = entry['rec_num']
+        if rn not in location_map:
+            hall_id = entry.get('dining_hall_id', '')
+            hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
+            location_map[rn] = {
+                'station': entry.get('station', ''),
+                'dining_hall_id': hall_id,
+                'dining_hall_name': hall_doc['name'] if hall_doc else '',
+                'dietary_icons': entry.get('dietary_icons', []),
+                'date': entry.get('date', ''),
+                'meal_period': entry.get('meal_period', ''),
+            }
+
+    # Build MenuItem-compatible response
+    data = []
+    for rn, sim in selected:
+        food = food_map.get(rn, {})
+        loc = location_map.get(rn, {})
+        data.append({
+            'name': food.get('name', ''),
+            'rec_num': rn,
+            'station': loc.get('station', ''),
+            'dining_hall_id': loc.get('dining_hall_id', ''),
+            'date': loc.get('date', ''),
+            'meal_period': loc.get('meal_period', ''),
+            'dietary_icons': loc.get('dietary_icons', []),
+            'nutrition': food.get('nutrition', {}),
+            'nutrition_fetched': food.get('nutrition_fetched', False),
+            'allergens': food.get('allergens', ''),
+            'ingredients': food.get('ingredients', ''),
+            'tag': None,
+        })
+
+    # Cache for 10 minutes; evict stale entries to prevent unbounded growth
+    _similar_cache[cache_key] = {'data': data, 'expires': now + 600}
+    if len(_similar_cache) > 500:
+        stale = [k for k, v in _similar_cache.items() if now >= v['expires']]
+        for k in stale:
+            del _similar_cache[k]
+
+    return {'success': True, 'data': data}
+
+
 @router.get('/api/search')
 @limiter.limit("30/minute")
 async def search_menu(request: Request, q: str = Query(default='')):
@@ -456,7 +587,7 @@ async def track_item_view(
     body: ItemViewBody,
     user_id: Optional[str] = Depends(get_optional_user),
 ):
-    allowed_sources = {'home', 'station', 'search', 'profile_favorites', 'tracker'}
+    allowed_sources = {'home', 'station', 'search', 'profile_favorites', 'tracker', 'similar'}
     source = body.source if body.source in allowed_sources else 'unknown'
     await db.item_views.insert_one({
         'user_id': user_id,
