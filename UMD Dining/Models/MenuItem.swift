@@ -1,6 +1,6 @@
 import Foundation
 
-struct MenuItem: Decodable, Identifiable, Sendable {
+struct MenuItem: Codable, Identifiable, Sendable {
     let name: String
     let recNum: String
     let diningHallId: String
@@ -42,7 +42,7 @@ struct MenuItem: Decodable, Identifiable, Sendable {
         mealPeriod = try container.decode(String.self, forKey: .mealPeriod)
         station = try container.decode(String.self, forKey: .station)
         dietaryIcons = try container.decode([String].self, forKey: .dietaryIcons)
-        nutritionFetched = try container.decode(Bool.self, forKey: .nutritionFetched)
+        nutritionFetched = try container.decodeIfPresent(Bool.self, forKey: .nutritionFetched) ?? false
         allergens = try container.decodeIfPresent(String.self, forKey: .allergens)
         ingredients = try container.decodeIfPresent(String.self, forKey: .ingredients)
         nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition)

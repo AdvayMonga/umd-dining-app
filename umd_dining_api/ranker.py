@@ -246,10 +246,6 @@ def rank_items(
             'meal_period': entry.get('meal_period', 'Unknown'),
             'station': display_station or 'Unknown',
             'dietary_icons': dietary_icons,
-            'nutrition_fetched': food.get('nutrition_fetched', False),
-            'nutrition': food.get('nutrition', {}),
-            'allergens': food.get('allergens', ''),
-            'ingredients': food.get('ingredients', ''),
             'tag': tag,
             'tags': tags,
         }

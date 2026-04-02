@@ -194,8 +194,32 @@ class HomeViewModel {
         }
     }
 
+    private static let feedCacheKey = "cached_feed_data"
+    private static let feedCacheKeyId = "cached_feed_key"
+
+    private func loadFromDisk() {
+        guard let keyId = UserDefaults.standard.string(forKey: Self.feedCacheKeyId),
+              keyId == currentCacheKey,
+              let data = UserDefaults.standard.data(forKey: Self.feedCacheKey),
+              let items = try? JSONDecoder().decode([MenuItem].self, from: data)
+        else { return }
+        allItems = items
+        lastLoadedKey = keyId
+    }
+
+    private func saveToDisk() {
+        guard let data = try? JSONEncoder().encode(allItems) else { return }
+        UserDefaults.standard.set(data, forKey: Self.feedCacheKey)
+        UserDefaults.standard.set(currentCacheKey, forKey: Self.feedCacheKeyId)
+    }
+
     func loadMenus() async {
-        // Skip if same date + filters already loaded — show cached feed instantly
+        // Try disk cache first (instant app launch)
+        if allItems.isEmpty {
+            loadFromDisk()
+        }
+
+        // Skip network if same date + filters already loaded
         guard lastLoadedKey != currentCacheKey else { return }
 
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
@@ -227,6 +251,7 @@ class HomeViewModel {
                 allergens: filterAllergens
             )
             lastLoadedKey = currentCacheKey
+            saveToDisk()
             if !availableMealPeriods.contains(selectedMealPeriod),
                let first = availableMealPeriods.first {
                 selectedMealPeriod = first
