@@ -3,8 +3,7 @@ import SwiftData
 import SwiftUI
 
 struct TrackerView: View {
-    @Binding var tabSelection: Int
-    let myTab: Int
+    @Binding var tabResetID: UUID
     @Environment(NutritionTrackerManager.self) private var tracker
     @Environment(\.modelContext) private var modelContext
     @State private var selectedDate = Date()
@@ -12,7 +11,6 @@ struct TrackerView: View {
     @State private var animateCharts = false
     @State private var entries: [TrackedEntry] = []
     @State private var scrollProxy: ScrollViewProxy?
-    @State private var navPath = NavigationPath()
 
     private var totalCalories: Int {
         entries.reduce(0) { $0 + $1.calories }
@@ -43,7 +41,7 @@ struct TrackerView: View {
     private var fatMet: Bool { tracker.fatGoal > 0 && Int(totalFat) >= tracker.fatGoal }
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             Group {
                 if entries.isEmpty {
                     emptyState
@@ -53,28 +51,27 @@ struct TrackerView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Tracker")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 10) {
-                        NavigationLink(destination: GoalsView()) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "target")
-                                    .font(.caption)
-                                Text("Set Goals")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                            }
-                            .foregroundStyle(Color.umdRed)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.umdRed.opacity(0.12))
-                            .clipShape(Capsule())
+                    NavigationLink(destination: GoalsView()) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "target")
+                                .font(.caption)
+                            Text("Set Goals")
+                                .font(.caption)
+                                .fontWeight(.semibold)
                         }
-                        CalendarCardButton(selection: $selectedDate)
+                        .foregroundStyle(Color.umdRed)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.umdRed.opacity(0.12))
+                        .clipShape(Capsule())
                     }
                 }
             }
         }
+        .id(tabResetID)
         .overlay {
             if showClearConfirm {
                 clearConfirmOverlay
@@ -92,16 +89,12 @@ struct TrackerView: View {
         .onChange(of: selectedDate) {
             loadEntries()
         }
-        .onChange(of: tabSelection) {
-            if tabSelection == myTab {
-                navPath = NavigationPath()
-                selectedDate = Date()
-                loadEntries()
-                withAnimation { scrollProxy?.scrollTo("trackerTop", anchor: .top) }
-                animateCharts = false
-                withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
-                    animateCharts = true
-                }
+        .onChange(of: tabResetID) {
+            selectedDate = Date()
+            loadEntries()
+            animateCharts = false
+            withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
+                animateCharts = true
             }
         }
     }
@@ -157,9 +150,7 @@ struct TrackerView: View {
 
             Spacer()
 
-            Text(dateLabel)
-                .font(.title3)
-                .fontWeight(.bold)
+            CalendarCardButton(selection: $selectedDate)
 
             Spacer()
 
@@ -486,7 +477,7 @@ struct TrackerView: View {
 }
 
 #Preview {
-    TrackerView(tabSelection: .constant(1), myTab: 1)
+    TrackerView(tabResetID: .constant(UUID()))
         .environment(NutritionTrackerManager.shared)
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])
 }

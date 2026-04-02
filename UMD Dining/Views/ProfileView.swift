@@ -2,8 +2,7 @@ import AuthenticationServices
 import SwiftUI
 
 struct ProfileView: View {
-    @Binding var tabSelection: Int
-    let myTab: Int
+    @Binding var tabResetID: UUID
     @State private var preferences = UserPreferences.shared
     @Environment(FavoritesManager.self) private var favorites
     @AppStorage("isDarkMode") private var isDarkMode = true
@@ -16,7 +15,6 @@ struct ProfileView: View {
     @State private var foodsToShow = 10
     @State private var stationsToShow = 10
     @State private var scrollProxy: ScrollViewProxy?
-    @State private var navPath = NavigationPath()
 
     private let allergenOptions = [
         ("Contains dairy", "Dairy"),
@@ -29,7 +27,7 @@ struct ProfileView: View {
     ]
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 16) {
@@ -71,9 +69,16 @@ struct ProfileView: View {
                                     showDeleteAlert = true
                                 } label: {
                                     Text("Delete Account")
-                                        .font(.caption)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
                                         .foregroundStyle(.red)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 44)
+                                        .background(Color.red.opacity(0.12))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.3), lineWidth: 1))
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     } else {
@@ -119,20 +124,19 @@ struct ProfileView: View {
                     sectionCard("Favorite Foods") {
                         if favorites.favoriteFoods.isEmpty {
                             NavigationLink(destination: SearchOverlay()) {
-                                HStack {
+                                HStack(spacing: 8) {
                                     Image(systemName: "magnifyingglass")
-                                        .foregroundStyle(Color.umdRed)
+                                        .foregroundStyle(.primary)
                                     Text("Find Foods")
                                         .font(.subheadline)
                                         .fontWeight(.medium)
                                         .foregroundStyle(.primary)
-                                    Spacer()
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
                                 .background(Color(.systemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                         } else {
@@ -153,6 +157,7 @@ struct ProfileView: View {
                                     .padding(.vertical, 10)
                                     .background(Color(.systemBackground))
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -175,20 +180,19 @@ struct ProfileView: View {
                     sectionCard("Favorite Stations") {
                         if favorites.favoriteStations.isEmpty {
                             NavigationLink(destination: SearchOverlay()) {
-                                HStack {
+                                HStack(spacing: 8) {
                                     Image(systemName: "magnifyingglass")
-                                        .foregroundStyle(Color.umdRed)
+                                        .foregroundStyle(.primary)
                                     Text("Find Stations")
                                         .font(.subheadline)
                                         .fontWeight(.medium)
                                         .foregroundStyle(.primary)
-                                    Spacer()
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
                                 .background(Color(.systemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                         } else {
@@ -205,6 +209,7 @@ struct ProfileView: View {
                                 .padding(.vertical, 10)
                                 .background(Color(.systemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                             }
                             if stationsToShow < sorted.count {
                                 Button {
@@ -230,12 +235,6 @@ struct ProfileView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Profile")
-            .onChange(of: tabSelection) {
-                if tabSelection == myTab {
-                    navPath = NavigationPath()
-                    withAnimation { scrollProxy?.scrollTo("profileTop", anchor: .top) }
-                }
-            }
             .sheet(isPresented: $showCuisinePrefs) {
                 NavigationStack {
                     PalateSurveyView(onComplete: {})
@@ -266,6 +265,7 @@ struct ProfileView: View {
                 Text(upgradeError ?? "")
             }
         }
+        .id(tabResetID)
     }
 
     // MARK: - Account Header
@@ -502,6 +502,6 @@ struct ProfileView: View {
 }
 
 #Preview {
-    ProfileView(tabSelection: .constant(2), myTab: 2)
+    ProfileView(tabResetID: .constant(UUID()))
         .environment(FavoritesManager.shared)
 }

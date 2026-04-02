@@ -2,16 +2,14 @@ import SwiftData
 import SwiftUI
 
 struct HomeView: View {
-    @Binding var tabSelection: Int
-    let myTab: Int
+    @Binding var tabResetID: UUID
     @State private var viewModel = HomeViewModel()
     @State private var showSearch = false
     @State private var showFilter = false
     @State private var scrollProxy: ScrollViewProxy?
-    @State private var navPath = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             VStack(spacing: 0) {
                 header
                 mealPicker
@@ -25,17 +23,14 @@ struct HomeView: View {
             .onChange(of: viewModel.selectedDate) {
                 Task { await viewModel.loadMenus() }
             }
-            .onChange(of: tabSelection) {
-                if tabSelection == myTab {
-                    navPath = NavigationPath()
-                    showSearch = false
-                    showFilter = false
-                    withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
-                }
-            }
             .onChange(of: viewModel.selectedMealPeriod) {
                 withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
             }
+        }
+        .id(tabResetID)
+        .onChange(of: tabResetID) {
+            showSearch = false
+            showFilter = false
         }
     }
 
@@ -202,7 +197,7 @@ struct HomeView: View {
 }
 
 #Preview {
-    HomeView(tabSelection: .constant(0), myTab: 0)
+    HomeView(tabResetID: .constant(UUID()))
         .environment(FavoritesManager.shared)
         .environment(NutritionTrackerManager.shared)
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])

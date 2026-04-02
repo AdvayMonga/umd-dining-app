@@ -3,8 +3,6 @@ import SwiftUI
 struct GoalsView: View {
     @Environment(NutritionTrackerManager.self) private var tracker
 
-    private let calorieOptions: [Int] = Array(stride(from: 1000, through: 5000, by: 50))
-    @State private var showCaloriePicker = false
 
     var body: some View {
         ScrollView {
@@ -82,41 +80,24 @@ struct GoalsView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
 
-            VStack(spacing: 4) {
-                // Tap the number to toggle the picker
-                Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        showCaloriePicker.toggle()
-                    }
-                } label: {
-                    VStack(spacing: 4) {
-                        Text("\(tracker.calorieGoalSetting)")
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundStyle(Color.umdRed)
+            VStack(spacing: 12) {
+                Text("\(tracker.calorieGoalSetting)")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(Color.umdRed)
 
-                        Text("calories per day")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                Text("calories per day")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                        if !showCaloriePicker {
-                            Text("Tap to adjust")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if showCaloriePicker {
-                    Picker("Calories", selection: $tracker.calorieGoalSetting) {
-                        ForEach(calorieOptions, id: \.self) { cal in
-                            Text("\(cal)").tag(cal)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                    .frame(height: 120)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
+                Slider(
+                    value: Binding(
+                        get: { Double(tracker.calorieGoalSetting) },
+                        set: { tracker.calorieGoalSetting = Int(($0 / 50).rounded() * 50) }
+                    ),
+                    in: 500...6000,
+                    step: 50
+                )
+                .tint(Color.umdRed)
             }
             .padding()
             .background(Color(.systemBackground))

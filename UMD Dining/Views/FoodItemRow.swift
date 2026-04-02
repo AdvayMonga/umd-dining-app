@@ -13,8 +13,6 @@ struct FoodItemRow: View {
     @State private var servingCount: Double = 1.0
     @State private var pendingNutrition: [String: String]?
 
-    private let servingOptions: [Double] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -89,29 +87,31 @@ struct FoodItemRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
         .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
-        .sheet(isPresented: $showServingPicker, onDismiss: { servingCount = 1.0 }) {
+        .fullScreenCover(isPresented: $showServingPicker) {
             if let nutrition = pendingNutrition {
                 ServingPickerSheet(
                     foodName: item.name,
                     nutrition: nutrition,
                     servingCount: $servingCount,
-                    servingOptions: servingOptions,
                     onLog: {
                         tracker.setModelContext(modelContext)
                         tracker.addEntry(name: item.name, recNum: item.recNum, nutrition: nutrition,
                                          mealPeriod: item.mealPeriod, diningHall: diningHallName,
                                          servingMultiplier: servingCount)
                         showServingPicker = false
+                        servingCount = 1.0
                         Task {
                             withAnimation(.spring(duration: 0.3)) { showAdded = true }
                             try? await Task.sleep(for: .seconds(1.5))
                             withAnimation { showAdded = false }
                         }
                     },
-                    onCancel: { showServingPicker = false }
+                    onCancel: {
+                        showServingPicker = false
+                        servingCount = 1.0
+                    }
                 )
-                .presentationDetents([.height(420)])
-                .presentationDragIndicator(.visible)
+                .presentationBackground(.clear)
             }
         }
     }
@@ -182,13 +182,12 @@ struct FoodItemRow: View {
     }
 }
 
-// MARK: - Serving Picker Sheet
+// MARK: - Serving Picker Overlay
 
 struct ServingPickerSheet: View {
     let foodName: String
     let nutrition: [String: String]
     @Binding var servingCount: Double
-    let servingOptions: [Double]
     let onLog: () -> Void
     let onCancel: () -> Void
 
@@ -213,82 +212,94 @@ struct ServingPickerSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            // Header
-            Text("Log Food")
-                .font(.title3)
-                .fontWeight(.bold)
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture { onCancel() }
 
-            // Food info
-            VStack(spacing: 4) {
-                Text(foodName)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .multilineTextAlignment(.center)
+            VStack(spacing: 16) {
+                // Header
+                Text("Log Food")
+                    .font(.title3)
+                    .fontWeight(.bold)
 
-                if let size = servingSize {
-                    Text("Serving Size: \(size)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+                // Food info
+                VStack(spacing: 4) {
+                    Text(foodName)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .multilineTextAlignment(.center)
 
-            // Wheel picker
-            VStack(spacing: 2) {
-                Picker("Servings", selection: $servingCount) {
-                    ForEach(servingOptions, id: \.self) { option in
-                        Text(option.truncatingRemainder(dividingBy: 1) == 0
-                             ? "\(Int(option))"
-                             : String(format: "%.1f", option))
-                            .tag(option)
+                    if let size = servingSize {
+                        Text("Serving Size: \(size)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .pickerStyle(.wheel)
-                .frame(height: 120)
 
-                Text("servings")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                // Serving slider
+                VStack(spacing: 8) {
+                    Text(servingCount.truncatingRemainder(dividingBy: 1) == 0
+                         ? "\(Int(servingCount))"
+                         : String(format: "%.1f", servingCount))
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundStyle(Color.umdRed)
 
-            // Macro preview
-            HStack(spacing: 8) {
-                macroPill("\(previewCalories) cal", color: Color.umdRed)
-                macroPill("\(previewProtein)g P", color: .blue)
-                macroPill("\(previewCarbs)g C", color: .green)
-                macroPill("\(previewFat)g F", color: .orange)
-            }
+                    Text("servings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            // Buttons
-            HStack(spacing: 12) {
-                Button {
-                    onCancel()
-                } label: {
-                    Text("Cancel")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(Color(.systemGray5))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Slider(
+                        value: $servingCount,
+                        in: 0.5...5.0,
+                        step: 0.5
+                    )
+                    .tint(Color.umdRed)
                 }
-                .buttonStyle(.plain)
 
-                Button {
-                    onLog()
-                } label: {
-                    Text("Log")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(Color.umdRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                // Macro preview
+                HStack(spacing: 6) {
+                    macroPill("\(previewCalories) cal", color: Color.umdRed)
+                    macroPill("\(previewProtein)g P", color: .blue)
+                    macroPill("\(previewCarbs)g C", color: .green)
+                    macroPill("\(previewFat)g F", color: .orange)
                 }
-                .buttonStyle(.plain)
+
+                // Buttons
+                HStack(spacing: 12) {
+                    Button {
+                        onCancel()
+                    } label: {
+                        Text("Cancel")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color(.systemGray5))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        onLog()
+                    } label: {
+                        Text("Log")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.umdRed)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
+            .padding(24)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(radius: 20)
+            .padding(.horizontal, 30)
         }
-        .padding(24)
     }
 
     private func macroPill(_ text: String, color: Color) -> some View {

@@ -9,6 +9,8 @@ struct SignInView: View {
 
     var body: some View {
         ZStack {
+            Color.black.ignoresSafeArea()
+
             VStack(spacing: 40) {
                 Spacer()
 
@@ -22,7 +24,7 @@ struct SignInView: View {
                         .fontWeight(.bold)
                         .foregroundStyle(Color.umdRed)
 
-                    Text("Sign in to save your favorites across devices")
+                    Text("Sign in to save your preferences")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

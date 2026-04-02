@@ -14,7 +14,6 @@ struct NutritionDetailView: View {
     @State private var showAddedToTracker = false
     @State private var showServingPicker = false
     @State private var servingCount: Double = 1.0
-    private let servingOptions: [Double] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
 
     // Already shown elsewhere — exclude from table
     private let excludeFromTable = ["Calories", "Total Fat", "Total Carbohydrate", "Protein",
@@ -77,13 +76,12 @@ struct NutritionDetailView: View {
             await viewModel.loadNutrition(recNum: recNum)
             DiningAPIService.shared.trackItemView(recNum: recNum, foodName: foodName, source: source)
         }
-        .sheet(isPresented: $showServingPicker, onDismiss: { servingCount = 1.0 }) {
+        .fullScreenCover(isPresented: $showServingPicker) {
             if let info = viewModel.nutritionInfo {
                 ServingPickerSheet(
                     foodName: foodName,
                     nutrition: info.nutrition,
                     servingCount: $servingCount,
-                    servingOptions: servingOptions,
                     onLog: {
                         tracker.setModelContext(modelContext)
                         tracker.addEntry(name: foodName, recNum: recNum, nutrition: info.nutrition,
@@ -91,16 +89,19 @@ struct NutritionDetailView: View {
                                          servingMultiplier: servingCount)
                         Task { await NutritionCache.shared.set(recNum, info) }
                         showServingPicker = false
+                        servingCount = 1.0
                         withAnimation(.spring(duration: 0.3)) { showAddedToTracker = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
                             withAnimation { showAddedToTracker = false }
                         }
                     },
-                    onCancel: { showServingPicker = false }
+                    onCancel: {
+                        showServingPicker = false
+                        servingCount = 1.0
+                    }
                 )
-                .presentationDetents([.height(420)])
-                .presentationDragIndicator(.visible)
+                .presentationBackground(.clear)
             }
         }
     }
