@@ -177,14 +177,66 @@ async def home():
     }
 
 
+@router.get('/privacy')
+async def privacy_policy():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse("""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UMD Dining - Privacy Policy</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#333;line-height:1.6}h1{color:#E21833}h2{margin-top:30px}ul{padding-left:20px}</style>
+</head><body>
+<h1>UMD Dining — Privacy Policy</h1>
+<p><strong>Last updated:</strong> April 3, 2026</p>
+
+<h2>What We Collect</h2>
+<ul>
+<li><strong>Apple Sign In ID</strong> — Used solely to authenticate your account. We do not access your name or email.</li>
+<li><strong>Dietary preferences &amp; allergens</strong> — Stored to personalize your feed and filter foods.</li>
+<li><strong>Favorites &amp; intake logs</strong> — Stored to track your favorite foods and nutrition intake.</li>
+<li><strong>Usage data</strong> — Food views and search queries to improve recommendations. This data is anonymous and not tied to your identity.</li>
+</ul>
+
+<h2>How We Use Your Data</h2>
+<ul>
+<li>Personalize your dining hall food recommendations</li>
+<li>Remember your dietary preferences and allergens</li>
+<li>Track your nutrition intake</li>
+<li>Improve the app's recommendation algorithm</li>
+</ul>
+
+<h2>Data Storage &amp; Security</h2>
+<ul>
+<li>Data is stored on MongoDB Atlas (encrypted at rest and in transit)</li>
+<li>Authentication uses JSON Web Tokens (JWT)</li>
+<li>We do not sell or share your personal data with third parties</li>
+</ul>
+
+<h2>Account Deletion</h2>
+<p>You can delete your account at any time from the Profile tab. This permanently removes your identity and personal data. Anonymous usage data may be retained for improving the service.</p>
+
+<h2>Third-Party Services</h2>
+<ul>
+<li><strong>Apple Sign In</strong> — For authentication</li>
+<li><strong>University of Maryland Dining Services</strong> — Menu data source (nutrition.umd.edu)</li>
+<li><strong>OpenAI</strong> — For generating food similarity embeddings (no personal data is sent)</li>
+<li><strong>AWS</strong> — Cloud hosting infrastructure</li>
+</ul>
+
+<h2>Contact</h2>
+<p>Questions about this policy? Contact <strong>advaymonga@gmail.com</strong></p>
+</body></html>""")
+
+
 @router.get('/api/dining-halls')
-async def get_dining_halls():
+@limiter.limit("30/minute")
+async def get_dining_halls(request: Request):
     halls = await db.dining_halls.find({}, {'_id': 0}).to_list(None)
     return {'success': True, 'count': len(halls), 'data': halls}
 
 
 @router.get('/api/available-dates')
-async def get_available_dates():
+@limiter.limit("30/minute")
+async def get_available_dates(request: Request):
     dates = await db.menus.distinct("date")
     return {'success': True, 'count': len(dates), 'data': sorted(dates)}
 
@@ -367,7 +419,9 @@ async def get_ranked_menu(
 
 
 @router.get('/api/menu')
+@limiter.limit("30/minute")
 async def get_menu(
+    request: Request,
     date: Optional[str] = Query(default=None),
     dining_hall_id: Optional[str] = Query(default=None),
 ):
@@ -960,13 +1014,15 @@ async def delete_account(request: Request, user_id: str = Depends(get_current_us
 # ---------------------------------------------------------------------------
 
 @router.get('/api/favorites')
-async def get_favorites(user_id: str = Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def get_favorites(request: Request,user_id: str = Depends(get_current_user)):
     favs = await db.favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
     return {'success': True, 'data': favs}
 
 
 @router.post('/api/favorites')
-async def add_favorite(body: FavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def add_favorite(request: Request,body: FavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     await db.favorites.update_one(
         {'user_id': user_id, 'rec_num': body.rec_num},
         {'$set': {'user_id': user_id, 'rec_num': body.rec_num, 'name': body.name, 'added_at': datetime.now().isoformat()}},
@@ -976,7 +1032,8 @@ async def add_favorite(body: FavoriteBody = Body(...), user_id: str = Depends(ge
 
 
 @router.delete('/api/favorites')
-async def remove_favorite(body: RemoveFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def remove_favorite(request: Request,body: RemoveFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     await db.favorites.delete_one({'user_id': user_id, 'rec_num': body.rec_num})
     return {'success': True}
 
@@ -986,13 +1043,15 @@ async def remove_favorite(body: RemoveFavoriteBody = Body(...), user_id: str = D
 # ---------------------------------------------------------------------------
 
 @router.get('/api/station-favorites')
-async def get_station_favorites(user_id: str = Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def get_station_favorites(request: Request,user_id: str = Depends(get_current_user)):
     favs = await db.station_favorites.find({'user_id': user_id}, {'_id': 0}).to_list(None)
     return {'success': True, 'data': favs}
 
 
 @router.post('/api/station-favorites')
-async def add_station_favorite(body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def add_station_favorite(request: Request,body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     await db.station_favorites.update_one(
         {'user_id': user_id, 'station_name': body.station_name},
         {'$set': {'user_id': user_id, 'station_name': body.station_name, 'added_at': datetime.now().isoformat()}},
@@ -1002,7 +1061,8 @@ async def add_station_favorite(body: StationFavoriteBody = Body(...), user_id: s
 
 
 @router.delete('/api/station-favorites')
-async def remove_station_favorite(body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def remove_station_favorite(request: Request,body: StationFavoriteBody = Body(...), user_id: str = Depends(get_current_user)):
     await db.station_favorites.delete_one({'user_id': user_id, 'station_name': body.station_name})
     return {'success': True}
 
@@ -1012,7 +1072,8 @@ async def remove_station_favorite(body: StationFavoriteBody = Body(...), user_id
 # ---------------------------------------------------------------------------
 
 @router.get('/api/preferences')
-async def get_preferences(user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def get_preferences(request: Request,user_id: str = Depends(get_current_user)):
     prefs = await db.preferences.find_one({'user_id': user_id}, {'_id': 0})
     if not prefs:
         prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
@@ -1020,7 +1081,8 @@ async def get_preferences(user_id: str = Depends(get_current_user)):
 
 
 @router.put('/api/preferences')
-async def update_preferences(body: PreferencesBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("20/minute")
+async def update_preferences(request: Request,body: PreferencesBody = Body(...), user_id: str = Depends(get_current_user)):
     await db.preferences.update_one(
         {'user_id': user_id},
         {'$set': {
@@ -1040,7 +1102,8 @@ async def update_preferences(body: PreferencesBody = Body(...), user_id: str = D
 # ---------------------------------------------------------------------------
 
 @router.get('/api/intake')
-async def get_intake(date: Optional[str] = Query(default=None), user_id: str = Depends(get_current_user)):
+@limiter.limit("60/minute")
+async def get_intake(request: Request, date: Optional[str] = Query(default=None), user_id: str = Depends(get_current_user)):
     query: dict = {'user_id': user_id}
     if date:
         query['date'] = date
@@ -1049,7 +1112,8 @@ async def get_intake(date: Optional[str] = Query(default=None), user_id: str = D
 
 
 @router.post('/api/intake')
-async def log_intake(body: IntakeBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def log_intake(request: Request, body: IntakeBody = Body(...), user_id: str = Depends(get_current_user)):
     if not body.rec_num:
         raise HTTPException(status_code=400, detail='rec_num required')
 
@@ -1069,7 +1133,8 @@ async def log_intake(body: IntakeBody = Body(...), user_id: str = Depends(get_cu
 
 
 @router.delete('/api/intake')
-async def remove_intake(body: RemoveIntakeBody = Body(...), user_id: str = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def remove_intake(request: Request, body: RemoveIntakeBody = Body(...), user_id: str = Depends(get_current_user)):
     if not body.rec_num:
         raise HTTPException(status_code=400, detail='rec_num required')
 
