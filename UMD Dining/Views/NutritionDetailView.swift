@@ -151,9 +151,14 @@ struct NutritionDetailView: View {
                                     .foregroundStyle(Color.umdRed)
                             }
                         } else {
-                            Text("Unavailable today")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.umdRed)
+                            HStack(spacing: 4) {
+                                Image(systemName: "calendar")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.umdRed)
+                                Text(availabilityText(info))
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.umdRed)
+                            }
                         }
                     }
                     Spacer()
@@ -310,6 +315,23 @@ struct NutritionDetailView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "M/d/yyyy"
         return formatter.string(from: Date())
+    }
+
+    private func availabilityText(_ info: NutritionInfo) -> String {
+        guard let nextDate = info.nextAvailable else {
+            return "Unavailable this week"
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d/yyyy"
+        guard let parsed = formatter.date(from: nextDate) else {
+            return "Unavailable this week"
+        }
+        if Calendar.current.isDateInToday(parsed) {
+            return "Available today"
+        }
+        let display = DateFormatter()
+        display.dateFormat = "EEE, MMM d"
+        return "Next available \(display.string(from: parsed))"
     }
 
     private func nutritionTable(_ nutrition: [String: String]) -> some View {

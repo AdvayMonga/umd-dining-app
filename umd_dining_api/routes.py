@@ -418,6 +418,21 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
         import threading
         threading.Thread(target=fetch_and_cache_nutrition, args=(rec_num,), daemon=True).start()
 
+    # Find next available date (today or future)
+    from datetime import datetime as dt
+    today = dt.now().date()
+    menu_dates = await db.menus.distinct('date', {'rec_num': rec_num})
+    next_available = None
+    earliest_future = None
+    for d in menu_dates:
+        try:
+            parsed = dt.strptime(d, '%m/%d/%Y').date()
+            if parsed >= today and (earliest_future is None or parsed < earliest_future):
+                earliest_future = parsed
+                next_available = d
+        except ValueError:
+            pass
+
     return {
         'success': True,
         'data': {
@@ -426,6 +441,7 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
             'nutrition': food.get('nutrition', {}),
             'allergens': food.get('allergens', ''),
             'ingredients': food.get('ingredients', ''),
+            'next_available': next_available,
         }
     }
 
@@ -517,8 +533,6 @@ async def get_similar_foods(
 _query_embed_cache: dict = {}  # {query_lower: {'embedding': [...], 'expires': float}}
 
 # --- Food embedding matrix cache (5-min TTL) ---
-_food_embed_cache: dict = {'rec_nums': [], 'matrix': None, 'expires': 0}
-
 
 async def _get_query_embedding(query: str):
     """Get or generate query embedding with caching. Returns None on timeout/error."""
@@ -540,28 +554,20 @@ async def _get_query_embedding(query: str):
         return None
 
 
-async def _get_food_embeddings():
-    """Load all food embeddings with caching. Returns (rec_nums, matrix) or ([], None)."""
-    now = time.time()
-    if now < _food_embed_cache['expires'] and _food_embed_cache['matrix'] is not None:
-        return _food_embed_cache['rec_nums'], _food_embed_cache['matrix']
-    try:
-        docs = await asyncio.wait_for(
-            db.foods.find(
-                {'embedding': {'$exists': True, '$ne': None}},
-                {'_id': 0, 'rec_num': 1, 'embedding': 1}
-            ).to_list(None),
-            timeout=5.0,
-        )
-    except asyncio.TimeoutError:
+async def _get_candidate_embeddings(rec_nums: list):
+    """Fetch embeddings only for specific candidate rec_nums. Lightweight — no full scan."""
+    if not rec_nums:
         return [], None
+    docs = await db.foods.find(
+        {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True, '$ne': None}},
+        {'_id': 0, 'rec_num': 1, 'embedding': 1}
+    ).to_list(None)
     if not docs:
         return [], None
     import numpy as np
-    rec_nums = [d['rec_num'] for d in docs]
+    rns = [d['rec_num'] for d in docs]
     matrix = np.array([d['embedding'] for d in docs], dtype=np.float32)
-    _food_embed_cache.update({'rec_nums': rec_nums, 'matrix': matrix, 'expires': now + 3600})  # 1hr — embeddings change rarely
-    return rec_nums, matrix
+    return rns, matrix
 
 
 @router.get('/api/search')
@@ -634,15 +640,9 @@ async def search_menu(
         _get_global_views(),
     ]
 
-    # Only add semantic tasks when requested (phase 2 call)
+    # Only add semantic embedding generation when requested (phase 2 call)
     if semantic:
-        async def _semantic_task():
-            qe = await _get_query_embedding(q)
-            if qe is None:
-                return None, [], None
-            rns, mat = await _get_food_embeddings()
-            return qe, rns, mat
-        tasks.append(_semantic_task())
+        tasks.append(_get_query_embedding(q))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -654,51 +654,34 @@ async def search_menu(
     user_views = results[4] if not isinstance(results[4], BaseException) else {}
     global_views = results[5] if not isinstance(results[5], BaseException) else {}
 
-    # Unpack semantic results (only when semantic=true)
-    query_embedding, embed_rec_nums, embed_matrix = None, [], None
+    # Unpack semantic query embedding (only when semantic=true)
+    query_embedding = None
     if semantic and len(results) > 6:
-        sem = results[6]
-        if not isinstance(sem, BaseException):
-            query_embedding, embed_rec_nums, embed_matrix = sem
+        qe = results[6]
+        if not isinstance(qe, BaseException):
+            query_embedding = qe
 
-    # --- Semantic retrieval ---
-    semantic_rec_nums = set()
-    has_semantic = query_embedding is not None and embed_matrix is not None
-    if has_semantic:
-        import numpy as np
-        q_vec = np.asarray(query_embedding, dtype=np.float32)
-        norms = np.linalg.norm(embed_matrix, axis=1) * np.linalg.norm(q_vec)
-        norms[norms == 0] = 1.0
-        sims = embed_matrix @ q_vec / norms
-        for i, sim in enumerate(sims):
-            if sim >= 0.72:
-                semantic_rec_nums.add(embed_rec_nums[i])
-
-    # --- Union candidates ---
+    # --- Union text candidates ---
     candidate_map = {}  # rec_num -> food dict
     for food in name_foods + ingredient_foods:
         rn = food.get('rec_num')
         if rn and rn not in candidate_map:
             candidate_map[rn] = food
 
-    # Add semantic-only matches (need to fetch their food docs)
-    semantic_only = semantic_rec_nums - set(candidate_map.keys())
-    if semantic_only:
-        sem_foods = await db.foods.find(
-            {'rec_num': {'$in': list(semantic_only)}},
-            {'_id': 0, 'embedding': 0}
-        ).to_list(None)
-        for food in sem_foods:
-            rn = food.get('rec_num')
-            if rn:
-                candidate_map[rn] = food
-
-    # Attach embeddings to candidates for scoring
+    # --- Semantic re-ranking: fetch embeddings only for text-matched candidates ---
+    has_semantic = query_embedding is not None and candidate_map
     if has_semantic:
-        embed_rn_set = set(candidate_map.keys())
-        embed_rn_to_idx = {rn: i for i, rn in enumerate(embed_rec_nums) if rn in embed_rn_set}
-        for rn, idx in embed_rn_to_idx.items():
-            candidate_map[rn]['embedding'] = embed_matrix[idx].tolist()
+        import numpy as np
+        candidate_rns = list(candidate_map.keys())
+        embed_rec_nums, embed_matrix = await _get_candidate_embeddings(candidate_rns)
+        if embed_matrix is not None:
+            q_vec = np.asarray(query_embedding, dtype=np.float32)
+            norms = np.linalg.norm(embed_matrix, axis=1) * np.linalg.norm(q_vec)
+            norms[norms == 0] = 1.0
+            sims = embed_matrix @ q_vec / norms
+            for i, rn in enumerate(embed_rec_nums):
+                if rn in candidate_map:
+                    candidate_map[rn]['embedding'] = embed_matrix[i].tolist()
 
     # --- Rank ---
     ranked = rank_search_results(
