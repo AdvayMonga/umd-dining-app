@@ -9,6 +9,7 @@ struct CuisineOption: Identifiable {
 
 struct PalateSurveyView: View {
     var onComplete: () -> Void
+    var isOnboarding: Bool = true
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
     @State private var showAllergens = false
@@ -52,7 +53,12 @@ struct PalateSurveyView: View {
 
             Button {
                 UserPreferences.shared.cuisinePrefs = Array(selected)
-                showAllergens = true
+                if isOnboarding {
+                    showAllergens = true
+                } else {
+                    onComplete()
+                    dismiss()
+                }
             } label: {
                 Text("Continue")
                     .font(.headline)

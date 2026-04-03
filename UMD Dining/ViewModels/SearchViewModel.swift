@@ -48,27 +48,39 @@ class SearchViewModel {
         }
         stationResults = stations
 
-        // Server-side food search
+        // Server-side food search (two-phase: fast text, then semantic)
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
 
             isLoading = true
             hasSearched = true
+
+            // Phase 1: Fast text + ingredient + personalization results
             do {
                 results = try await DiningAPIService.shared.searchFoods(query: trimmed)
                 errorMessage = nil
                 DiningAPIService.shared.trackSearchQuery(query: trimmed, resultCount: results.count)
             } catch is CancellationError {
-                // Ignore cancellation
+                return
             } catch let error as URLError where error.code == .cancelled {
-                // Ignore cancelled network requests (from debounce)
+                return
             } catch {
                 if !Task.isCancelled {
                     errorMessage = error.localizedDescription
                 }
             }
             isLoading = false
+
+            // Phase 2: Semantic re-rank (runs in background, replaces results)
+            guard !Task.isCancelled else { return }
+            do {
+                let semanticResults = try await DiningAPIService.shared.searchFoods(query: trimmed, semantic: true)
+                guard !Task.isCancelled else { return }
+                results = semanticResults
+            } catch {
+                // Semantic failure is silent — phase 1 results remain
+            }
         }
     }
 }

@@ -31,6 +31,7 @@ struct HomeView: View {
         .onChange(of: tabResetID) {
             showSearch = false
             showFilter = false
+            Task { await viewModel.syncPrefsAndReloadIfNeeded() }
         }
     }
 

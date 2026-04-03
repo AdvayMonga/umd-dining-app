@@ -166,9 +166,12 @@ actor DiningAPIService {
         return response.data
     }
 
-    func searchFoods(query: String) async throws -> [SearchResult] {
+    func searchFoods(query: String, semantic: Bool = false) async throws -> [SearchResult] {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        let data = try await fetch("\(baseURL)/search?q=\(encoded)")
+        let token = await AuthManager.shared.jwtToken
+        var url = "\(baseURL)/search?q=\(encoded)"
+        if semantic { url += "&semantic=true" }
+        let data = try await fetch(url, token: token)
         let response = try JSONDecoder().decode(SearchResponse.self, from: data)
         return response.data
     }

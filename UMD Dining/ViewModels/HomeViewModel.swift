@@ -53,7 +53,8 @@ class HomeViewModel {
 
     private var currentCacheKey: String {
         let allergenStr = filterAllergens.sorted().joined(separator: ",")
-        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHighProtein)|\(allergenStr)"
+        let cuisinePrefs = UserPreferences.shared.cuisinePrefs.sorted().joined(separator: ",")
+        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)"
     }
 
     // Snapshot of favorites at load time — keeps feed order stable until refresh
@@ -269,6 +270,28 @@ class HomeViewModel {
     func forceReloadMenus() async {
         lastLoadedKey = nil
         hasLoadedPrefs = false
+        await loadMenus()
+    }
+
+    func syncPrefsAndReloadIfNeeded() async {
+        // Sync profile prefs into session filters
+        let prefs = UserPreferences.shared
+        filterVegetarian = prefs.vegetarian
+        filterVegan = prefs.vegan
+        filterAllergens = prefs.allergens
+
+        // Check if favorites changed since last load
+        let currentFavFoods = Set(FavoritesManager.shared.favoriteFoods.keys)
+        let currentFavStations = FavoritesManager.shared.favoriteStations
+        let favsChanged = currentFavFoods != loadedFavRecNums || currentFavStations != loadedFavStations
+
+        if favsChanged {
+            loadedFavRecNums = currentFavFoods
+            loadedFavStations = currentFavStations
+            lastLoadedKey = nil  // Force re-fetch since favorites affect ranking
+        }
+
+        // Re-fetch if cache key changed (prefs/filters/cuisine) or favorites changed
         await loadMenus()
     }
 }

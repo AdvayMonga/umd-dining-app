@@ -237,7 +237,7 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .sheet(isPresented: $showCuisinePrefs) {
                 NavigationStack {
-                    PalateSurveyView(onComplete: {})
+                    PalateSurveyView(onComplete: {}, isOnboarding: false)
                 }
             }
             .overlay {

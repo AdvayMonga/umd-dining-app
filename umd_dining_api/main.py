@@ -45,12 +45,39 @@ async def lifespan(app: FastAPI):
         )
     print(f"Seeded {len(DINING_HALLS)} dining halls")
 
-    await db.intake.create_index([('user_id', 1), ('date', 1)])
+    # --- Indexes for efficient queries at scale ---
 
-    # Engagement tracking indexes
+    # Intake tracking
+    await db.intake.create_index([('user_id', 1), ('date', 1)])
+    await db.intake.create_index([('user_id', 1), ('rec_num', 1)])
+
+    # Engagement tracking
     await db.item_views.create_index([('user_id', 1), ('timestamp', -1)])
+    await db.item_views.create_index([('user_id', 1), ('rec_num', 1)])
     await db.item_views.create_index([('rec_num', 1), ('timestamp', -1)])
     await db.search_queries.create_index([('user_id', 1), ('timestamp', -1)])
+
+    # Foods — text search on name + ingredients, rec_num lookup
+    await db.foods.create_index([('rec_num', 1)], unique=True)
+    await db.foods.create_index([('name', 'text'), ('ingredients', 'text')])
+
+    # Menus — fast lookup by rec_num and by date+hall
+    await db.menus.create_index([('rec_num', 1)])
+    await db.menus.create_index([('date', 1), ('dining_hall_id', 1)])
+
+    # Favorites — fast per-user and trending aggregation
+    await db.favorites.create_index([('user_id', 1), ('rec_num', 1)])
+    await db.favorites.create_index([('rec_num', 1)])
+
+    # Station favorites
+    await db.station_favorites.create_index([('user_id', 1), ('station_name', 1)])
+
+    # Preferences
+    await db.preferences.create_index([('user_id', 1)], unique=True)
+
+    # Users
+    await db.users.create_index([('user_id', 1)], unique=True)
+    await db.users.create_index([('apple_user_id', 1)], sparse=True)
 
     yield
 

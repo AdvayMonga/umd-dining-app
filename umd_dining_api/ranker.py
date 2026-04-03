@@ -137,12 +137,12 @@ def rank_items(
 
         # Favorite station
         if station in fav_stations:
-            score += 60
+            score += 20
             signals.add('favorite_station')
 
         # Trending (favorited by many users)
         if rec_num in popular_rec_nums:
-            score += 40
+            score += 35
             signals.add('trending')
 
         # Dietary preference match
@@ -204,13 +204,13 @@ def rank_items(
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
                     if sim >= 0.73:
-                        score += 45
+                        score += 55
                         signals.add('similar_to_favorites')
                     elif sim >= 0.65:
-                        score += 30
+                        score += 40
                         signals.add('similar_to_favorites')
                     elif sim >= 0.55:
-                        score += 18
+                        score += 25
                         signals.add('somewhat_similar')
 
         # --- Filters ---

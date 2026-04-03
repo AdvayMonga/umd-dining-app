@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from main import db, limiter, SECRET_KEY, ADMIN_SECRET
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
 from ranker import rank_items
+from search_ranker import rank_search_results
+from embeddings import generate_embedding_async
 
 router = APIRouter()
 
@@ -31,9 +33,6 @@ def _ensure_string(value, field_name='field'):
 
 # --- Trending cache (global, 5-min TTL) ---
 _trending_cache: dict = {'data': set(), 'expires': 0}
-
-# --- Similar foods cache (10-min TTL, keyed by (rec_num, date)) ---
-_similar_cache: dict = {}  # {(rec_num, date): {'data': [...], 'expires': float}}
 
 async def _get_trending():
     now = time.time()
@@ -409,11 +408,15 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
     if not rec_num:
         raise HTTPException(status_code=400, detail='rec_num parameter required')
 
-    # fetch_and_cache_nutrition is sync (hits UMD's site) — run in thread
-    loop = asyncio.get_event_loop()
-    food = await loop.run_in_executor(None, fetch_and_cache_nutrition, rec_num)
+    # Fast path: read from async Motor client (most foods already have nutrition)
+    food = await db.foods.find_one({'rec_num': rec_num}, {'_id': 0, 'embedding': 0})
     if not food:
         raise HTTPException(status_code=404, detail='Food not found')
+
+    # If nutrition not fetched yet, kick off background scrape but return what we have now
+    if not food.get('nutrition_fetched'):
+        import threading
+        threading.Thread(target=fetch_and_cache_nutrition, args=(rec_num,), daemon=True).start()
 
     return {
         'success': True,
@@ -438,105 +441,46 @@ async def get_similar_foods(
     if not rec_num:
         raise HTTPException(status_code=400, detail='rec_num required')
 
-    # Check cache (10-min TTL)
-    cache_key = (rec_num, date or '')
-    now = time.time()
-    cached = _similar_cache.get(cache_key)
-    if cached and now < cached['expires']:
-        return {'success': True, 'data': cached['data']}
+    SIMILARITY_THRESHOLD = 0.55
 
-    import numpy as np
-
-    # Phase 1: Fetch target embedding
-    target = await db.foods.find_one(
-        {'rec_num': rec_num, 'embedding': {'$exists': True}},
-        {'embedding': 1, '_id': 0}
-    )
-    if not target or not target.get('embedding'):
+    # Lookup precomputed similar foods — just two DB reads
+    food = await db.foods.find_one({'rec_num': rec_num}, {'_id': 0, 'similar': 1})
+    if not food or not food.get('similar'):
         return {'success': True, 'data': []}
 
-    target_vec = np.asarray(target['embedding'], dtype=np.float32)
-    target_norm = np.linalg.norm(target_vec)
-
-    # Phase 2: Determine candidate pool
-    # If date is provided (item unavailable today), only search today's menu
-    # If no date (item available today), search all foods
-    if date:
-        menu_rec_nums = await db.menus.distinct('rec_num', {'date': date})
-        candidate_rns = [r for r in menu_rec_nums if r != rec_num]
-        if not candidate_rns:
-            return {'success': True, 'data': []}
-        candidates = await db.foods.find(
-            {'rec_num': {'$in': candidate_rns}, 'embedding': {'$exists': True}},
-            {'_id': 0, 'rec_num': 1, 'embedding': 1}
-        ).to_list(None)
+    # Show 3-5: all that pass threshold (up to 5), but always at least 3
+    stored = food['similar']  # [{rec_num, score}, ...]
+    above_threshold = [s for s in stored if s.get('score', 0) >= SIMILARITY_THRESHOLD]
+    if len(above_threshold) >= 3:
+        selected = above_threshold[:5]
     else:
-        # All foods — but only fetch rec_num + embedding (minimal)
-        candidates = await db.foods.find(
-            {'rec_num': {'$ne': rec_num}, 'embedding': {'$exists': True}},
-            {'_id': 0, 'rec_num': 1, 'embedding': 1}
-        ).to_list(None)
+        selected = stored[:3]
 
-    if not candidates:
-        return {'success': True, 'data': []}
+    similar_rec_nums = [s['rec_num'] for s in selected]
 
-    # Phase 3: Vectorized similarity
-    rec_nums_list = [c['rec_num'] for c in candidates]
-    emb_matrix = np.asarray([c['embedding'] for c in candidates], dtype=np.float32)
-    norms = np.linalg.norm(emb_matrix, axis=1)
-    sims = np.dot(emb_matrix, target_vec) / (norms * target_norm + 1e-10)
-
-    # Top indices — always take at least 3, then up to limit if >= 0.75
-    top_indices = np.argsort(sims)[::-1][:limit]
-    selected = []
-    for i, idx in enumerate(top_indices):
-        sim = float(sims[idx])
-        if i >= 3 and sim < 0.75:
-            break
-        selected.append((rec_nums_list[idx], sim))
-
-    # Guarantee at least 3 results if candidates exist
-    if len(selected) < 3 and len(top_indices) >= 3:
-        for idx in top_indices[:3]:
-            rn = rec_nums_list[idx]
-            if not any(r == rn for r, _ in selected):
-                selected.append((rn, float(sims[idx])))
-        selected = selected[:3]
-
-    if not selected:
-        return {'success': True, 'data': []}
-
-    # Phase 4: Fetch full food data for top results
-    top_rec_nums = [rn for rn, _ in selected]
+    # Fetch food data for similar items
     food_docs = await db.foods.find(
-        {'rec_num': {'$in': top_rec_nums}},
+        {'rec_num': {'$in': similar_rec_nums}},
         {'_id': 0, 'embedding': 0}
     ).to_list(None)
     food_map = {f['rec_num']: f for f in food_docs}
 
-    # Phase 5: Look up station/dining hall (batch lookup, no individual queries)
-    location_map = {}
-    menu_filter = {'rec_num': {'$in': top_rec_nums}}
-    if date:
-        menu_filter['date'] = date
+    # Look up station/dining hall from most recent menu entries
     menu_entries = await db.menus.find(
-        menu_filter,
+        {'rec_num': {'$in': similar_rec_nums}},
         {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'dietary_icons': 1,
          'date': 1, 'meal_period': 1}
     ).sort('date', -1).to_list(None)
 
-    # Pre-load hall names (only 3 halls, avoids N individual lookups)
     hall_names = {}
-    for entry in menu_entries:
-        hall_id = entry.get('dining_hall_id', '')
-        if hall_id and hall_id not in hall_names:
-            hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
-            hall_names[hall_id] = hall_doc['name'] if hall_doc else ''
-
+    location_map = {}
     for entry in menu_entries:
         rn = entry['rec_num']
         if rn not in location_map:
             hall_id = entry.get('dining_hall_id', '')
+            if hall_id and hall_id not in hall_names:
+                hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
+                hall_names[hall_id] = hall_doc['name'] if hall_doc else ''
             location_map[rn] = {
                 'station': entry.get('station', ''),
                 'dining_hall_id': hall_id,
@@ -546,77 +490,265 @@ async def get_similar_foods(
                 'meal_period': entry.get('meal_period', ''),
             }
 
-    # Build MenuItem-compatible response
     data = []
-    for rn, sim in selected:
-        food = food_map.get(rn, {})
+    for rn in similar_rec_nums:
+        f = food_map.get(rn, {})
         loc = location_map.get(rn, {})
         data.append({
-            'name': food.get('name', ''),
+            'name': f.get('name', ''),
             'rec_num': rn,
             'station': loc.get('station', ''),
             'dining_hall_id': loc.get('dining_hall_id', ''),
             'date': loc.get('date', ''),
             'meal_period': loc.get('meal_period', ''),
             'dietary_icons': loc.get('dietary_icons', []),
-            'nutrition': food.get('nutrition', {}),
-            'nutrition_fetched': food.get('nutrition_fetched', False),
-            'allergens': food.get('allergens', ''),
-            'ingredients': food.get('ingredients', ''),
+            'nutrition': f.get('nutrition', {}),
+            'nutrition_fetched': f.get('nutrition_fetched', False),
+            'allergens': f.get('allergens', ''),
+            'ingredients': f.get('ingredients', ''),
             'tag': None,
             'tags': [],
         })
 
-    # Cache for 10 minutes; evict stale entries to prevent unbounded growth
-    _similar_cache[cache_key] = {'data': data, 'expires': now + 600}
-    if len(_similar_cache) > 500:
-        stale = [k for k, v in _similar_cache.items() if now >= v['expires']]
-        for k in stale:
-            del _similar_cache[k]
-
     return {'success': True, 'data': data}
+
+
+# --- Query embedding cache (1-hr TTL, max 200 entries) ---
+_query_embed_cache: dict = {}  # {query_lower: {'embedding': [...], 'expires': float}}
+
+# --- Food embedding matrix cache (5-min TTL) ---
+_food_embed_cache: dict = {'rec_nums': [], 'matrix': None, 'expires': 0}
+
+
+async def _get_query_embedding(query: str):
+    """Get or generate query embedding with caching. Returns None on timeout/error."""
+    key = query.lower().strip()
+    now = time.time()
+    cached = _query_embed_cache.get(key)
+    if cached and now < cached['expires']:
+        return cached['embedding']
+    try:
+        embedding = await asyncio.wait_for(generate_embedding_async(key), timeout=3.0)
+        _query_embed_cache[key] = {'embedding': embedding, 'expires': now + 3600}
+        # Evict expired entries if cache is large
+        if len(_query_embed_cache) > 200:
+            stale = [k for k, v in _query_embed_cache.items() if now >= v['expires']]
+            for k in stale:
+                del _query_embed_cache[k]
+        return embedding
+    except Exception:
+        return None
+
+
+async def _get_food_embeddings():
+    """Load all food embeddings with caching. Returns (rec_nums, matrix) or ([], None)."""
+    now = time.time()
+    if now < _food_embed_cache['expires'] and _food_embed_cache['matrix'] is not None:
+        return _food_embed_cache['rec_nums'], _food_embed_cache['matrix']
+    try:
+        docs = await asyncio.wait_for(
+            db.foods.find(
+                {'embedding': {'$exists': True, '$ne': None}},
+                {'_id': 0, 'rec_num': 1, 'embedding': 1}
+            ).to_list(None),
+            timeout=5.0,
+        )
+    except asyncio.TimeoutError:
+        return [], None
+    if not docs:
+        return [], None
+    import numpy as np
+    rec_nums = [d['rec_num'] for d in docs]
+    matrix = np.array([d['embedding'] for d in docs], dtype=np.float32)
+    _food_embed_cache.update({'rec_nums': rec_nums, 'matrix': matrix, 'expires': now + 3600})  # 1hr — embeddings change rarely
+    return rec_nums, matrix
 
 
 @router.get('/api/search')
 @limiter.limit("30/minute")
-async def search_menu(request: Request, q: str = Query(default='')):
+async def search_menu(
+    request: Request,
+    q: str = Query(default=''),
+    semantic: bool = Query(default=False),
+    user_id: Optional[str] = Depends(get_optional_user),
+):
     if not q:
         raise HTTPException(status_code=400, detail='Search query required')
     if len(q) > 100:
         raise HTTPException(status_code=400, detail='Search query too long')
 
     safe_query = re.escape(q)
-    foods = await db.foods.find(
-        {'name': {'$regex': safe_query, '$options': 'i'}},
-        {'_id': 0, 'embedding': 0}
-    ).limit(50).to_list(None)
 
-    # Look up most recent station + dining hall for each food from menus
-    rec_nums = [f['rec_num'] for f in foods]
+    # --- Parallel retrieval (text + personalization, always) ---
+    async def fetch_name_matches():
+        return await db.foods.find(
+            {'name': {'$regex': safe_query, '$options': 'i'}},
+            {'_id': 0, 'embedding': 0}
+        ).limit(100).to_list(None)
+
+    async def fetch_ingredient_matches():
+        return await db.foods.find(
+            {'$text': {'$search': q}},
+            {'_id': 0, 'embedding': 0, 'score': {'$meta': 'textScore'}}
+        ).sort([('score', {'$meta': 'textScore'})]).limit(100).to_list(None)
+
+    async def fetch_user_favorites():
+        if not user_id:
+            return set()
+        docs = await db.favorites.find(
+            {'user_id': user_id}, {'_id': 0, 'rec_num': 1}
+        ).to_list(None)
+        return {d['rec_num'] for d in docs}
+
+    async def fetch_intake_counts():
+        if not user_id:
+            return {}
+        pipeline = [
+            {'$match': {'user_id': user_id}},
+            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+        ]
+        result = {}
+        async for doc in db.intake.aggregate(pipeline):
+            result[doc['_id']] = doc['count']
+        return result
+
+    async def fetch_user_views():
+        if not user_id:
+            return {}
+        pipeline = [
+            {'$match': {'user_id': user_id}},
+            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+        ]
+        result = {}
+        async for doc in db.item_views.aggregate(pipeline):
+            result[doc['_id']] = doc['count']
+        return result
+
+    # Build the set of parallel tasks
+    tasks = [
+        fetch_name_matches(),
+        fetch_ingredient_matches(),
+        fetch_user_favorites(),
+        fetch_intake_counts(),
+        fetch_user_views(),
+        _get_global_views(),
+    ]
+
+    # Only add semantic tasks when requested (phase 2 call)
+    if semantic:
+        async def _semantic_task():
+            qe = await _get_query_embedding(q)
+            if qe is None:
+                return None, [], None
+            rns, mat = await _get_food_embeddings()
+            return qe, rns, mat
+        tasks.append(_semantic_task())
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Unpack text/personalization results (always present)
+    name_foods = results[0] if not isinstance(results[0], BaseException) else []
+    ingredient_foods = results[1] if not isinstance(results[1], BaseException) else []
+    fav_rec_nums = results[2] if not isinstance(results[2], BaseException) else set()
+    intake_counts = results[3] if not isinstance(results[3], BaseException) else {}
+    user_views = results[4] if not isinstance(results[4], BaseException) else {}
+    global_views = results[5] if not isinstance(results[5], BaseException) else {}
+
+    # Unpack semantic results (only when semantic=true)
+    query_embedding, embed_rec_nums, embed_matrix = None, [], None
+    if semantic and len(results) > 6:
+        sem = results[6]
+        if not isinstance(sem, BaseException):
+            query_embedding, embed_rec_nums, embed_matrix = sem
+
+    # --- Semantic retrieval ---
+    semantic_rec_nums = set()
+    has_semantic = query_embedding is not None and embed_matrix is not None
+    if has_semantic:
+        import numpy as np
+        q_vec = np.asarray(query_embedding, dtype=np.float32)
+        norms = np.linalg.norm(embed_matrix, axis=1) * np.linalg.norm(q_vec)
+        norms[norms == 0] = 1.0
+        sims = embed_matrix @ q_vec / norms
+        for i, sim in enumerate(sims):
+            if sim >= 0.72:
+                semantic_rec_nums.add(embed_rec_nums[i])
+
+    # --- Union candidates ---
+    candidate_map = {}  # rec_num -> food dict
+    for food in name_foods + ingredient_foods:
+        rn = food.get('rec_num')
+        if rn and rn not in candidate_map:
+            candidate_map[rn] = food
+
+    # Add semantic-only matches (need to fetch their food docs)
+    semantic_only = semantic_rec_nums - set(candidate_map.keys())
+    if semantic_only:
+        sem_foods = await db.foods.find(
+            {'rec_num': {'$in': list(semantic_only)}},
+            {'_id': 0, 'embedding': 0}
+        ).to_list(None)
+        for food in sem_foods:
+            rn = food.get('rec_num')
+            if rn:
+                candidate_map[rn] = food
+
+    # Attach embeddings to candidates for scoring
+    if has_semantic:
+        embed_rn_set = set(candidate_map.keys())
+        embed_rn_to_idx = {rn: i for i, rn in enumerate(embed_rec_nums) if rn in embed_rn_set}
+        for rn, idx in embed_rn_to_idx.items():
+            candidate_map[rn]['embedding'] = embed_matrix[idx].tolist()
+
+    # --- Rank ---
+    ranked = rank_search_results(
+        candidates=list(candidate_map.values()),
+        query=q,
+        query_embedding=query_embedding,
+        fav_rec_nums=fav_rec_nums,
+        intake_counts=intake_counts,
+        user_views=user_views,
+        global_views=global_views,
+    )
+
+    # --- Location lookup (batch hall names) ---
+    rec_nums = [f['rec_num'] for f in ranked]
     if rec_nums:
         menu_entries = await db.menus.find(
             {'rec_num': {'$in': rec_nums}},
             {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1}
         ).sort('date', -1).to_list(None)
-        # Keep only the most recent entry per rec_num
+
+        hall_ids = {e.get('dining_hall_id', '') for e in menu_entries} - {''}
+        hall_names = {}
+        if hall_ids:
+            hall_docs = await db.dining_halls.find(
+                {'hall_id': {'$in': list(hall_ids)}}, {'_id': 0, 'hall_id': 1, 'name': 1}
+            ).to_list(None)
+            hall_names = {d['hall_id']: d['name'] for d in hall_docs}
+
         location_map = {}
         for entry in menu_entries:
             rn = entry['rec_num']
             if rn not in location_map:
                 hall_id = entry.get('dining_hall_id', '')
-                hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
                 location_map[rn] = {
                     'station': entry.get('station', ''),
                     'dining_hall_id': hall_id,
-                    'dining_hall_name': hall_doc['name'] if hall_doc else '',
+                    'dining_hall_name': hall_names.get(hall_id, ''),
                 }
-        for food in foods:
+        for food in ranked:
             loc = location_map.get(food['rec_num'], {})
             food['station'] = loc.get('station', '')
             food['dining_hall_id'] = loc.get('dining_hall_id', '')
             food['dining_hall_name'] = loc.get('dining_hall_name', '')
+    else:
+        for food in ranked:
+            food['station'] = ''
+            food['dining_hall_id'] = ''
+            food['dining_hall_name'] = ''
 
-    return {'success': True, 'query': q, 'count': len(foods), 'data': foods}
+    return {'success': True, 'query': q, 'count': len(ranked), 'has_semantic': has_semantic, 'data': ranked}
 
 
 # ---------------------------------------------------------------------------
@@ -701,6 +833,20 @@ async def embed_missing(_: None = Depends(require_admin)):
         sync_client.close()
     threading.Thread(target=_run, daemon=False).start()
     return {'success': True, 'status': 'embedding started in background'}
+
+
+@router.post('/api/backfill-similar')
+async def backfill_similar(_: None = Depends(require_admin)):
+    def _run():
+        from embeddings import backfill_all_similar
+        from pymongo import MongoClient
+        sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
+        sync_db = sync_client.get_default_database()
+        count = backfill_all_similar(sync_db)
+        print(f"Backfilled similar foods for {count} items")
+        sync_client.close()
+    threading.Thread(target=_run, daemon=False).start()
+    return {'success': True, 'status': 'backfill started in background'}
 
 
 @router.post('/api/cuisine-embeddings/generate')
