@@ -16,6 +16,20 @@ struct HomeView: View {
                 content
             }
             .background(Color(.systemGroupedBackground))
+            .gesture(
+                DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                    .onEnded { value in
+                        // Require mostly-horizontal swipe (not vertical scrolling)
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        let periods = viewModel.availableMealPeriods
+                        guard let idx = periods.firstIndex(of: viewModel.selectedMealPeriod) else { return }
+                        if value.translation.width < -20 && idx < periods.count - 1 {
+                            withAnimation { viewModel.selectedMealPeriod = periods[idx + 1] }
+                        } else if value.translation.width > 20 && idx > 0 {
+                            withAnimation { viewModel.selectedMealPeriod = periods[idx - 1] }
+                        }
+                    }
+            )
             .task {
                 viewModel.autoSelectMealPeriod()
                 await viewModel.loadMenus()

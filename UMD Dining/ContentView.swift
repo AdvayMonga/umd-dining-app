@@ -13,6 +13,7 @@ struct ContentView: View {
         Binding(
             get: { selectedTab },
             set: { newValue in
+                guard newValue != selectedTab else { return }
                 selectedTab = newValue
                 tabResetID = UUID()
             }
@@ -43,19 +44,6 @@ struct ContentView: View {
         .onAppear {
             tracker.setModelContext(modelContext)
         }
-        .gesture(
-            DragGesture(minimumDistance: 30, coordinateSpace: .local)
-                .onEnded { value in
-                    if value.translation.width < -30 && selectedTab < tabCount - 1 {
-                        selectedTab += 1
-                        tabResetID = UUID()
-                    }
-                    if value.translation.width > 30 && selectedTab > 0 {
-                        selectedTab -= 1
-                        tabResetID = UUID()
-                    }
-                }
-        )
     }
 }
 

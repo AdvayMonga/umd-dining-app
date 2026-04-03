@@ -11,6 +11,13 @@ struct TrackerView: View {
     @State private var animateCharts = false
     @State private var entries: [TrackedEntry] = []
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var hasAppeared = false
+
+    // Display values that drive chart animations (animate between these)
+    @State private var displayCalorieValue: Int = 0
+    @State private var displayProteinValue: Double = 0
+    @State private var displayCarbsValue: Double = 0
+    @State private var displayFatValue: Double = 0
 
     private var totalCalories: Int {
         entries.reduce(0) { $0 + $1.calories }
@@ -79,22 +86,52 @@ struct TrackerView: View {
         }
         .onAppear {
             tracker.setModelContext(modelContext)
-            selectedDate = Date()
-            loadEntries()
-            animateCharts = false
-            withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
+            if !hasAppeared {
+                // First ever appearance: animate from 0
+                selectedDate = Date()
+                loadEntries()
+                displayCalorieValue = 0
+                displayProteinValue = 0
+                displayCarbsValue = 0
+                displayFatValue = 0
                 animateCharts = true
+                withAnimation(.easeOut(duration: 0.8)) {
+                    displayCalorieValue = totalCalories
+                    displayProteinValue = totalProtein
+                    displayCarbsValue = totalCarbs
+                    displayFatValue = totalFat
+                }
+                hasAppeared = true
             }
         }
         .onChange(of: selectedDate) {
+            // Date change: animate from current display values to new day's values
             loadEntries()
+            withAnimation(.easeOut(duration: 0.8)) {
+                displayCalorieValue = totalCalories
+                displayProteinValue = totalProtein
+                displayCarbsValue = totalCarbs
+                displayFatValue = totalFat
+            }
         }
         .onChange(of: tabResetID) {
+            // Tab re-selected: only re-animate if coming back from another tab
+            let wasOnTab = hasAppeared
             selectedDate = Date()
             loadEntries()
-            animateCharts = false
-            withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
+            if wasOnTab {
+                // Came back from another tab: animate from 0, no delay
+                displayCalorieValue = 0
+                displayProteinValue = 0
+                displayCarbsValue = 0
+                displayFatValue = 0
                 animateCharts = true
+                withAnimation(.easeOut(duration: 0.8)) {
+                    displayCalorieValue = totalCalories
+                    displayProteinValue = totalProtein
+                    displayCarbsValue = totalCarbs
+                    displayFatValue = totalFat
+                }
             }
         }
     }
@@ -177,15 +214,11 @@ struct TrackerView: View {
 
     // MARK: - Calorie Ring (Full Width)
 
-    private var displayCalories: Int {
-        animateCharts ? totalCalories : 0
-    }
-
     private var calorieRingCard: some View {
         ZStack {
             Chart {
                 SectorMark(
-                    angle: .value("Consumed", min(displayCalories, calorieGoal)),
+                    angle: .value("Consumed", min(displayCalorieValue, calorieGoal)),
                     innerRadius: .ratio(0.7),
                     angularInset: 2
                 )
@@ -193,7 +226,7 @@ struct TrackerView: View {
                 .cornerRadius(4)
 
                 SectorMark(
-                    angle: .value("Remaining", max(0, calorieGoal - displayCalories)),
+                    angle: .value("Remaining", max(0, calorieGoal - displayCalorieValue)),
                     innerRadius: .ratio(0.7),
                     angularInset: 2
                 )
@@ -201,7 +234,7 @@ struct TrackerView: View {
                 .cornerRadius(4)
             }
             .frame(height: 220)
-            .animation(.easeOut(duration: 0.8), value: displayCalories)
+            .animation(.easeOut(duration: 0.8), value: displayCalorieValue)
 
             VStack(spacing: 2) {
                 Text("\(totalCalories)")
@@ -223,14 +256,14 @@ struct TrackerView: View {
     private var macroBarCard: some View {
         VStack(spacing: 12) {
             HStack(alignment: .bottom, spacing: 16) {
-                macroBar(label: "Protein", consumed: animateCharts ? totalProtein : 0, goal: Double(tracker.proteinGoal), color: .blue, met: proteinMet && animateCharts)
-                macroBar(label: "Carbs", consumed: animateCharts ? totalCarbs : 0, goal: Double(tracker.carbsGoal), color: .green, met: carbsMet && animateCharts)
-                macroBar(label: "Fat", consumed: animateCharts ? totalFat : 0, goal: Double(tracker.fatGoal), color: .orange, met: fatMet && animateCharts)
+                macroBar(label: "Protein", consumed: displayProteinValue, goal: Double(tracker.proteinGoal), color: .blue, met: proteinMet && animateCharts)
+                macroBar(label: "Carbs", consumed: displayCarbsValue, goal: Double(tracker.carbsGoal), color: .green, met: carbsMet && animateCharts)
+                macroBar(label: "Fat", consumed: displayFatValue, goal: Double(tracker.fatGoal), color: .orange, met: fatMet && animateCharts)
             }
             .frame(height: 200)
-            .animation(.easeInOut(duration: 0.5), value: totalProtein)
-            .animation(.easeInOut(duration: 0.5), value: totalCarbs)
-            .animation(.easeInOut(duration: 0.5), value: totalFat)
+            .animation(.easeOut(duration: 0.8), value: displayProteinValue)
+            .animation(.easeOut(duration: 0.8), value: displayCarbsValue)
+            .animation(.easeOut(duration: 0.8), value: displayFatValue)
             .animation(.easeInOut(duration: 0.5), value: tracker.proteinGoal)
             .animation(.easeInOut(duration: 0.5), value: tracker.carbsGoal)
             .animation(.easeInOut(duration: 0.5), value: tracker.fatGoal)
