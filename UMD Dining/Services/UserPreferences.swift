@@ -65,6 +65,14 @@ class UserPreferences {
         }
     }
 
+    func clearAll() {
+        vegetarian = false
+        vegan = false
+        halalFriendly = false
+        allergens = []
+        cuisinePrefs = []
+    }
+
     private func saveLocally() {
         UserDefaults.standard.set(vegetarian, forKey: vegetarianKey)
         UserDefaults.standard.set(vegan, forKey: veganKey)

@@ -376,6 +376,8 @@ struct ProfileView: View {
                         } catch {
                             print("Delete account API error: \(error)")
                         }
+                        UserDefaults.standard.removeObject(forKey: "hasCompletedPalateSurvey")
+                        UserPreferences.shared.clearAll()
                         AuthManager.shared.signOut()
                         isDeleting = false
                     }
