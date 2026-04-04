@@ -12,19 +12,10 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
     @State private var showCuisinePrefs = false
+    @State private var showAllergenPrefs = false
     @State private var foodsToShow = 10
     @State private var stationsToShow = 10
     @State private var scrollProxy: ScrollViewProxy?
-
-    private let allergenOptions = [
-        ("Contains dairy", "Dairy"),
-        ("Contains egg", "Egg"),
-        ("Contains fish", "Fish"),
-        ("Contains gluten", "Gluten"),
-        ("Contains shellfish", "Shellfish"),
-        ("Contains sesame", "Sesame"),
-        ("Contains soy", "Soy"),
-    ]
 
     var body: some View {
         NavigationStack {
@@ -105,19 +96,15 @@ struct ProfileView: View {
                     sectionCard("Dietary Preferences") {
                         selectablePill("Vegetarian", isOn: $preferences.vegetarian)
                         selectablePill("Vegan", isOn: $preferences.vegan)
+                        selectablePill("Halal Friendly", isOn: $preferences.halalFriendly)
                     }
 
                     // --- Allergens ---
-                    sectionCard("Allergens to Avoid") {
-                        ForEach(allergenOptions, id: \.0) { key, label in
-                            selectablePill(label, isOn: Binding(
-                                get: { preferences.allergens.contains(key) },
-                                set: { on in
-                                    if on { preferences.allergens.insert(key) }
-                                    else { preferences.allergens.remove(key) }
-                                }
-                            ))
-                        }
+                    sectionCard("Allergies") {
+                        filterPill(
+                            "Allergies",
+                            subtitle: preferences.allergens.isEmpty ? "None set" : "\(preferences.allergens.count) selected"
+                        ) { showAllergenPrefs = true }
                     }
 
                     // --- Favorite Foods ---
@@ -238,6 +225,11 @@ struct ProfileView: View {
             .sheet(isPresented: $showCuisinePrefs) {
                 NavigationStack {
                     PalateSurveyView(onComplete: {}, isOnboarding: false)
+                }
+            }
+            .sheet(isPresented: $showAllergenPrefs) {
+                NavigationStack {
+                    AllergenSurveyView(onComplete: {}, isOnboarding: false)
                 }
             }
             .overlay {
