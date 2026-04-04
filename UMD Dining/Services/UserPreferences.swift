@@ -60,6 +60,17 @@ class UserPreferences {
         }
     }
 
+    func clearAll() {
+        vegetarian = false
+        vegan = false
+        allergens = []
+        cuisinePrefs = []
+        UserDefaults.standard.removeObject(forKey: vegetarianKey)
+        UserDefaults.standard.removeObject(forKey: veganKey)
+        UserDefaults.standard.removeObject(forKey: allergensKey)
+        UserDefaults.standard.removeObject(forKey: cuisinePrefsKey)
+    }
+
     private func saveLocally() {
         UserDefaults.standard.set(vegetarian, forKey: vegetarianKey)
         UserDefaults.standard.set(vegan, forKey: veganKey)

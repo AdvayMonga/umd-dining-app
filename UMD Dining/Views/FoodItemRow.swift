@@ -24,7 +24,7 @@ struct FoodItemRow: View {
                 if !item.tags.isEmpty {
                     HStack(spacing: 4) {
                         ForEach(item.tags, id: \.self) { tag in
-                            Text(tag)
+                            Text(tag.replacingOccurrences(of: "Contains ", with: "").capitalized)
                                 .font(.system(size: 10, weight: .semibold))
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
@@ -35,9 +35,15 @@ struct FoodItemRow: View {
                     }
                 }
 
-                Text("\(item.station) · \(diningHallName)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if !item.station.isEmpty || !diningHallName.isEmpty {
+                    Text([item.station, diningHallName].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Unavailable today")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 if !item.dietaryIcons.isEmpty {
                     HStack(spacing: 4) {
@@ -171,7 +177,8 @@ struct FoodItemRow: View {
         case "Contains egg": return "Egg"
         case "Contains fish": return "Fish"
         case "Contains gluten": return "Gluten"
-        case "Contains shellfish": return "Shellfish"
+        case "Contains nuts": return "Nuts"
+        case "Contains Shellfish": return "Shellfish"
         case "Contains sesame": return "Sesame"
         case "Contains soy": return "Soy"
         default: return icon
@@ -197,6 +204,28 @@ struct ServingPickerSheet: View {
 
     private var servingSize: String? {
         nutritionValue("Serving Size", from: nutrition)
+    }
+
+    private var scaledServingSize: String? {
+        guard let size = servingSize else { return nil }
+        // Try to extract the numeric portion and unit, e.g. "4 oz" -> (4, "oz"), "120g" -> (120, "g")
+        let pattern = #"^([\d.]+)\s*(.*)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: size, range: NSRange(size.startIndex..., in: size)),
+              let numRange = Range(match.range(at: 1), in: size),
+              let num = Double(size[numRange]) else {
+            // Can't parse — just show "2x <original>"
+            if servingCount == 1.0 { return size }
+            let label = servingCount.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(servingCount))" : String(format: "%.1f", servingCount)
+            return "\(label)x \(size)"
+        }
+        let unitRange = Range(match.range(at: 2), in: size)
+        let unit = unitRange.map { String(size[$0]) } ?? ""
+        let scaled = num * servingCount
+        let formatted = scaled.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(scaled))" : String(format: "%.1f", scaled)
+        return "\(formatted) \(unit)".trimmingCharacters(in: .whitespaces)
     }
 
     private var previewCalories: Int {
@@ -234,10 +263,12 @@ struct ServingPickerSheet: View {
                         .fontWeight(.semibold)
                         .multilineTextAlignment(.center)
 
-                    if let size = servingSize {
+                    if let size = scaledServingSize {
                         Text("Serving Size: \(size)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .contentTransition(.numericText())
+                            .animation(.easeInOut(duration: 0.2), value: servingCount)
                     }
                 }
 

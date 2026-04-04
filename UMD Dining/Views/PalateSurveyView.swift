@@ -22,6 +22,7 @@ struct PalateSurveyView: View {
         CuisineOption(id: "indian", label: "Indian", icon: "🍛", description: "Curry, tikka, biryani"),
         CuisineOption(id: "southern", label: "Southern/Soul", icon: "🍗", description: "Fried chicken, cornbread, BBQ"),
         CuisineOption(id: "breakfast", label: "Breakfast/Brunch", icon: "🥞", description: "Pancakes, eggs, waffles"),
+        CuisineOption(id: "healthy", label: "Healthy/Fresh", icon: "🥗", description: "Salads, grain bowls, smoothies"),
     ]
 
     var body: some View {

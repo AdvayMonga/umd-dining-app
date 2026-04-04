@@ -31,7 +31,7 @@ class NutritionTrackerManager {
     // MARK: - Goals (persisted via UserDefaults)
 
     var weightGoal: WeightGoal {
-        didSet { saveGoals(); if !hasCustomMacros { recalculateMacros() } }
+        didSet { saveGoals(); recalculateAutoGoals() }
     }
 
     var calorieGoalSetting: Int {
@@ -50,40 +50,118 @@ class NutritionTrackerManager {
         didSet { saveGoals() }
     }
 
+    var hasCustomGoals: Bool {
+        didSet { saveGoals(); recalculateAutoGoals() }
+    }
+
     var hasCustomMacros: Bool {
         didSet { saveGoals(); if !hasCustomMacros { recalculateMacros() } }
+    }
+
+    var weightLbs: Int {
+        didSet { saveGoals(); recalculateAutoGoals() }
+    }
+
+    var heightInches: Int {
+        didSet { saveGoals(); recalculateAutoGoals() }
     }
 
     private init() {
         let goalRaw = UserDefaults.standard.string(forKey: "goal_weightGoal") ?? "maintain"
         self.weightGoal = WeightGoal(rawValue: goalRaw) ?? .maintain
         self.calorieGoalSetting = UserDefaults.standard.object(forKey: "goal_calories") as? Int ?? 2000
+        self.hasCustomGoals = UserDefaults.standard.bool(forKey: "goal_customGoals")
         self.hasCustomMacros = UserDefaults.standard.bool(forKey: "goal_customMacros")
         self.proteinGoal = UserDefaults.standard.object(forKey: "goal_protein") as? Int ?? 0
         self.carbsGoal = UserDefaults.standard.object(forKey: "goal_carbs") as? Int ?? 0
         self.fatGoal = UserDefaults.standard.object(forKey: "goal_fat") as? Int ?? 0
+        self.weightLbs = UserDefaults.standard.object(forKey: "goal_weightLbs") as? Int ?? 160
+        self.heightInches = UserDefaults.standard.object(forKey: "goal_heightInches") as? Int ?? 68
 
         // Calculate defaults if never set
         if proteinGoal == 0 && carbsGoal == 0 && fatGoal == 0 {
+            recalculateAutoGoals()
+        }
+    }
+
+    /// Recalculates both calories (if auto) and macros (if auto)
+    func recalculateAutoGoals() {
+        if !hasCustomGoals {
+            recalculateCalories()
+        }
+        if !hasCustomMacros {
             recalculateMacros()
         }
     }
 
+    /// Mifflin-St Jeor TDEE estimate (assumes moderate activity, age ~20 for college students)
+    func recalculateCalories() {
+        let weightKg = Double(weightLbs) * 0.453592
+        let heightCm = Double(heightInches) * 2.54
+        let age = 20.0
+
+        // Mifflin-St Jeor (average of male/female since we don't ask sex)
+        let bmrMale = 10 * weightKg + 6.25 * heightCm - 5 * age + 5
+        let bmrFemale = 10 * weightKg + 6.25 * heightCm - 5 * age - 161
+        let bmr = (bmrMale + bmrFemale) / 2
+
+        // Moderate activity multiplier (college student walking campus)
+        let tdee = bmr * 1.55
+
+        let adjusted: Double
+        switch weightGoal {
+        case .lose:     adjusted = tdee - 500    // ~1 lb/week deficit
+        case .maintain: adjusted = tdee
+        case .gain:     adjusted = tdee + 350    // lean bulk surplus
+        }
+
+        // Round to nearest 50
+        calorieGoalSetting = Int((adjusted / 50).rounded() * 50)
+    }
+
     func recalculateMacros() {
-        let split = weightGoal.macroSplit
+        let weight = Double(weightLbs)
         let cal = Double(calorieGoalSetting)
-        proteinGoal = Int(cal * split.protein / 4)
-        carbsGoal = Int(cal * split.carbs / 4)
-        fatGoal = Int(cal * split.fat / 9)
+
+        // Protein based on body weight (g per lb varies by goal)
+        let proteinPerLb: Double
+        switch weightGoal {
+        case .lose:     proteinPerLb = 1.1
+        case .maintain: proteinPerLb = 0.9
+        case .gain:     proteinPerLb = 1.0
+        }
+        let proteinGrams = weight * proteinPerLb
+        let proteinCals = proteinGrams * 4
+
+        // Fat: 25-30% of total calories depending on goal
+        let fatPct: Double
+        switch weightGoal {
+        case .lose:     fatPct = 0.25
+        case .maintain: fatPct = 0.30
+        case .gain:     fatPct = 0.28
+        }
+        let fatCals = cal * fatPct
+        let fatGrams = fatCals / 9
+
+        // Carbs: remaining calories
+        let carbCals = max(cal - proteinCals - fatCals, 0)
+        let carbGrams = carbCals / 4
+
+        proteinGoal = Int(proteinGrams)
+        fatGoal = Int(fatGrams)
+        carbsGoal = Int(carbGrams)
     }
 
     private func saveGoals() {
         UserDefaults.standard.set(weightGoal.rawValue, forKey: "goal_weightGoal")
         UserDefaults.standard.set(calorieGoalSetting, forKey: "goal_calories")
+        UserDefaults.standard.set(hasCustomGoals, forKey: "goal_customGoals")
         UserDefaults.standard.set(hasCustomMacros, forKey: "goal_customMacros")
         UserDefaults.standard.set(proteinGoal, forKey: "goal_protein")
         UserDefaults.standard.set(carbsGoal, forKey: "goal_carbs")
         UserDefaults.standard.set(fatGoal, forKey: "goal_fat")
+        UserDefaults.standard.set(weightLbs, forKey: "goal_weightLbs")
+        UserDefaults.standard.set(heightInches, forKey: "goal_heightInches")
     }
 
     func setModelContext(_ context: ModelContext) {

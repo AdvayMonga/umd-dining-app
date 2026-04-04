@@ -24,6 +24,7 @@ struct NutritionDetailView: View {
 
     @State private var showAllNutrition = false
     @State private var showSimilarFoods = false
+    @Namespace private var namespace
 
     var body: some View {
         Group {
@@ -263,13 +264,29 @@ struct NutritionDetailView: View {
         "16": "South Campus Diner",
     ]
 
+    private var isAvailableToday: Bool {
+        // If opened from a station on today's menu, it's available
+        if station != nil { return true }
+        // Otherwise check nextAvailable from nutrition info
+        guard let info = viewModel.nutritionInfo,
+              let nextDate = info.nextAvailable else { return false }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d/yyyy"
+        guard let parsed = formatter.date(from: nextDate) else { return false }
+        return Calendar.current.isDateInToday(parsed)
+    }
+
+    private var similarFoodsLabel: String {
+        isAvailableToday ? "Similar Foods" : "Similar Foods Available Today"
+    }
+
     private var similarFoodsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) { showSimilarFoods.toggle() }
             } label: {
                 HStack {
-                    Text("Similar Foods")
+                    Text(similarFoodsLabel)
                         .font(.subheadline)
                         .fontWeight(.medium)
                     if viewModel.similarFoodsLoading {
@@ -291,7 +308,7 @@ struct NutritionDetailView: View {
 
             if showSimilarFoods, let foods = viewModel.similarFoods, !foods.isEmpty {
                 VStack(spacing: 8) {
-                    ForEach(foods) { item in
+                    ForEach(Array(foods.enumerated()), id: \.element.id) { index, item in
                         let hallName = Self.hallNames[item.diningHallId] ?? ""
                         NavigationLink(destination: NutritionDetailView(
                             recNum: item.recNum,
@@ -299,14 +316,18 @@ struct NutritionDetailView: View {
                             station: item.station.isEmpty ? nil : item.station,
                             diningHallName: hallName.isEmpty ? nil : hallName,
                             source: "similar"
-                        )) {
+                        )
+                        .navigationTransition(.zoom(sourceID: "similar-\(item.recNum)", in: namespace))
+                        ) {
                             FoodItemRow(item: item, diningHallName: hallName)
                         }
+                        .matchedTransitionSource(id: "similar-\(item.recNum)", in: namespace)
                         .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        .animation(.easeOut(duration: 0.25).delay(Double(index) * 0.05), value: showSimilarFoods)
                     }
                 }
                 .padding(.horizontal)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }

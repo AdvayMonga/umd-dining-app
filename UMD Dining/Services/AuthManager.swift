@@ -11,22 +11,27 @@ class AuthManager {
     private(set) var jwtToken: String?
     private(set) var isGuest: Bool = false
 
+    private(set) var displayName: String?
+
     private let keychainKey = "com.umddining.appleUserId"
     private let jwtKey = "com.umddining.jwtToken"
     private let guestKey = "com.umddining.isGuest"
     private let hasLaunchedKey = "com.umddining.hasLaunched"
+    private let nameKey = "com.umddining.displayName"
 
     init() {
         // Keychain persists across app deletes — clear it on fresh install
         if !UserDefaults.standard.bool(forKey: hasLaunchedKey) {
             deleteFromKeychain(key: keychainKey)
             deleteFromKeychain(key: jwtKey)
+            deleteFromKeychain(key: nameKey)
             UserDefaults.standard.removeObject(forKey: guestKey)
             UserDefaults.standard.set(true, forKey: hasLaunchedKey)
         }
         userId = loadFromKeychain(key: keychainKey)
         jwtToken = loadFromKeychain(key: jwtKey)
         isGuest = UserDefaults.standard.bool(forKey: guestKey)
+        displayName = loadFromKeychain(key: nameKey)
     }
 
     func handleSignIn(credential: ASAuthorizationAppleIDCredential) async {
@@ -35,6 +40,17 @@ class AuthManager {
         isGuest = false
         saveToKeychain(userIdentifier, key: keychainKey)
         UserDefaults.standard.set(false, forKey: guestKey)
+
+        // Apple only sends the name on first sign-in — persist it
+        if let fullName = credential.fullName {
+            let name = [fullName.givenName, fullName.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            if !name.isEmpty {
+                displayName = name
+                saveToKeychain(name, key: nameKey)
+            }
+        }
 
         if let token = try? await DiningAPIService.shared.registerAppleUser(userId: userIdentifier) {
             jwtToken = token
@@ -65,6 +81,18 @@ class AuthManager {
     /// Upgrade a guest account to Apple sign-in, migrating all server-side data.
     func upgradeToApple(credential: ASAuthorizationAppleIDCredential) async {
         let appleUserId = credential.user
+
+        // Capture name (Apple only sends it on first auth)
+        if let fullName = credential.fullName {
+            let name = [fullName.givenName, fullName.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            if !name.isEmpty {
+                displayName = name
+                saveToKeychain(name, key: nameKey)
+            }
+        }
+
         do {
             let token = try await DiningAPIService.shared.upgradeGuestToApple(appleUserId: appleUserId)
             userId = appleUserId
@@ -119,10 +147,17 @@ class AuthManager {
         userId = nil
         jwtToken = nil
         isGuest = false
+        displayName = nil
         deleteFromKeychain(key: keychainKey)
         deleteFromKeychain(key: jwtKey)
+        deleteFromKeychain(key: nameKey)
         UserDefaults.standard.removeObject(forKey: guestKey)
         FavoritesManager.shared.clearAll()
+
+        // Clear all local caches and preferences
+        UserDefaults.standard.removeObject(forKey: "cached_feed_data")
+        UserDefaults.standard.removeObject(forKey: "cached_feed_key")
+        UserPreferences.shared.clearAll()
     }
 
     // MARK: - Keychain

@@ -3,7 +3,6 @@ import SwiftUI
 struct AllergenOption: Identifiable {
     let id: String
     let label: String
-    let icon: String
 }
 
 struct AllergenSurveyView: View {
@@ -12,13 +11,14 @@ struct AllergenSurveyView: View {
     @State private var selected: Set<String> = []
 
     private let allergens: [AllergenOption] = [
-        AllergenOption(id: "Contains dairy", label: "Dairy", icon: "🥛"),
-        AllergenOption(id: "Contains egg", label: "Egg", icon: "🥚"),
-        AllergenOption(id: "Contains fish", label: "Fish", icon: "🐟"),
-        AllergenOption(id: "Contains gluten", label: "Gluten", icon: "🌾"),
-        AllergenOption(id: "Contains shellfish", label: "Shellfish", icon: "🦐"),
-        AllergenOption(id: "Contains sesame", label: "Sesame", icon: "🫘"),
-        AllergenOption(id: "Contains soy", label: "Soy", icon: "🫛"),
+        AllergenOption(id: "Contains dairy", label: "Dairy"),
+        AllergenOption(id: "Contains egg", label: "Egg"),
+        AllergenOption(id: "Contains fish", label: "Fish"),
+        AllergenOption(id: "Contains gluten", label: "Gluten"),
+        AllergenOption(id: "Contains nuts", label: "Nuts"),
+        AllergenOption(id: "Contains Shellfish", label: "Shellfish"),
+        AllergenOption(id: "Contains sesame", label: "Sesame"),
+        AllergenOption(id: "Contains soy", label: "Soy"),
     ]
 
     var body: some View {
@@ -91,17 +91,13 @@ struct AllergenSurveyView: View {
                 selected.insert(allergen.id)
             }
         } label: {
-            VStack(spacing: 8) {
-                Text(allergen.icon)
-                    .font(.system(size: 36))
-                Text(allergen.label)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .padding(.horizontal, 8)
+            Text(allergen.label)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .padding(.horizontal, 8)
             .background(isSelected ? Color.umdRed.opacity(0.12) : Color(.systemBackground))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)

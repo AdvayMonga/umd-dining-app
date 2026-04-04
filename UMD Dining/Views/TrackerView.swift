@@ -460,7 +460,7 @@ struct TrackerView: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
-                        .background(Color.red)
+                        .background(Color.umdRed)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 

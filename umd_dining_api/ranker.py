@@ -260,4 +260,29 @@ def rank_items(
     rng = random.Random(hash(date_seed))
     rng.shuffle(untagged)
 
-    return [item for _, item in scored] + untagged
+    # --- Diminishing returns on favorites ---
+    # Top 5 favorites keep full score, rest get reduced by 50
+    fav_count = 0
+    for i, (score, item) in enumerate(scored):
+        if 'Favorite' in item.get('tags', []):
+            fav_count += 1
+            if fav_count > 5:
+                scored[i] = (score - 50, item)
+    scored.sort(key=lambda x: -x[0])  # re-sort after adjustment
+
+    # --- Deduplicate across halls ---
+    # Keep highest-scored instance of each rec_num
+    seen_rec_nums = set()
+    deduped_scored = []
+    for score, item in scored:
+        if item['rec_num'] not in seen_rec_nums:
+            seen_rec_nums.add(item['rec_num'])
+            deduped_scored.append((score, item))
+
+    deduped_untagged = []
+    for item in untagged:
+        if item['rec_num'] not in seen_rec_nums:
+            seen_rec_nums.add(item['rec_num'])
+            deduped_untagged.append(item)
+
+    return [item for _, item in deduped_scored] + deduped_untagged

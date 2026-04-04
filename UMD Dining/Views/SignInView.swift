@@ -9,30 +9,39 @@ struct SignInView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.umdRed.ignoresSafeArea()
 
             VStack(spacing: 40) {
                 Spacer()
 
-                VStack(spacing: 12) {
-                    Image(systemName: "fork.knife")
-                        .font(.system(size: 60))
-                        .foregroundStyle(Color.umdRed)
+                VStack(spacing: 4) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Text("UMD")
+                            .font(.system(size: 64, weight: .black))
+                            .foregroundStyle(Color.black)
+                            .tracking(2)
 
-                    Text("UMD Dining")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundStyle(Color.umdRed)
+                        Image(systemName: "fork.knife")
+                            .font(.system(size: 48, weight: .black))
+                            .foregroundStyle(Color.black)
+                    }
+                    .padding(.bottom, -12)
+
+                    Text("DINING")
+                        .font(.system(size: 64, weight: .black))
+                        .foregroundStyle(Color.black)
+
 
                     Text("Sign in to save your preferences")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(.black)
+                        .padding(.top, 58)
                 }
 
                 Spacer()
 
                 SignInWithAppleButton(.signIn) { request in
-                    request.requestedScopes = []
+                    request.requestedScopes = [.fullName]
                 } onCompletion: { result in
                     switch result {
                     case .success(let authorization):
@@ -48,10 +57,10 @@ struct SignInView: View {
                         print("Sign in failed: \(error.localizedDescription)")
                     }
                 }
-                .signInWithAppleButtonStyle(isDarkMode ? .white : .black)
+                .signInWithAppleButtonStyle(isDarkMode ? .black : .black)
                 .frame(height: 50)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 20)
                 .disabled(isLoading)
 
                 Button {
@@ -63,7 +72,7 @@ struct SignInView: View {
                 } label: {
                     Text("Continue as Guest")
                         .font(.subheadline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .overlay(
@@ -71,7 +80,7 @@ struct SignInView: View {
                                 .stroke(Color.secondary.opacity(0.4), lineWidth: 1)
                         )
                 }
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 20)
                 .padding(.top, -24)
                 .disabled(isLoading)
 

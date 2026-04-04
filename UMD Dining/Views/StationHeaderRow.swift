@@ -7,7 +7,10 @@ struct StationHeaderRow: View {
     let items: [MenuItem]
     let selectedDate: Date
     let selectedMealPeriod: String
+    var namespace: Namespace.ID
     @Environment(FavoritesManager.self) private var favorites
+
+    private var stationId: String { "\(station)-\(diningHallId)" }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -21,6 +24,7 @@ struct StationHeaderRow: View {
                     initialDate: selectedDate,
                     initialMealPeriod: selectedMealPeriod
                 )
+                .navigationTransition(.zoom(sourceID: stationId, in: namespace))
             } label: {
                 HStack(spacing: 6) {
                     Text(station)
@@ -56,5 +60,6 @@ struct StationHeaderRow: View {
         .background(Color.umdRed.opacity(0.20))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.3), lineWidth: 1))
+        .matchedTransitionSource(id: stationId, in: namespace)
     }
 }

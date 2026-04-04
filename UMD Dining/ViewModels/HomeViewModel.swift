@@ -159,8 +159,6 @@ class HomeViewModel {
             if showDiscovery {
                 for group in discoveryGroups {
                     rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: true))
-                    let discoveryItems = minimalFiltered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
-                    Array(discoveryItems.prefix(3)).forEach { rows.append(.menuItem($0)) }
                 }
             } else {
                 rows.append(.seeMore)

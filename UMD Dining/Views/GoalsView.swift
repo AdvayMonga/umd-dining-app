@@ -7,7 +7,9 @@ struct GoalsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                bodyStatsSection
                 weightGoalSection
+                autoCustomToggle
                 calorieSection
                 macroSection
                 Spacer().frame(height: 40)
@@ -17,6 +19,80 @@ struct GoalsView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Set Goals")
+    }
+
+    // MARK: - Body Stats
+
+    private var bodyStatsSection: some View {
+        @Bindable var tracker = tracker
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Your Stats")
+                .font(.callout)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+
+            VStack(spacing: 16) {
+                // Weight slider
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Weight")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text("\(tracker.weightLbs) lbs")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundStyle(Color.umdRed)
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: { Double(tracker.weightLbs) },
+                            set: { tracker.weightLbs = Int($0.rounded()) }
+                        ),
+                        in: 80...350,
+                        step: 1
+                    )
+                    .tint(Color.umdRed)
+                }
+
+                // Height slider
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Height")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(heightString(tracker.heightInches))
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundStyle(Color.umdRed)
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: { Double(tracker.heightInches) },
+                            set: { tracker.heightInches = Int($0.rounded()) }
+                        ),
+                        in: 48...84,
+                        step: 1
+                    )
+                    .tint(Color.umdRed)
+                }
+            }
+            .padding()
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+        }
+    }
+
+    private func heightString(_ totalInches: Int) -> String {
+        let feet = totalInches / 12
+        let inches = totalInches % 12
+        return "\(feet)'\(inches)\""
     }
 
     // MARK: - Weight Goal
@@ -68,6 +144,27 @@ struct GoalsView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Auto / Custom Toggle
+
+    private var autoCustomToggle: some View {
+        @Bindable var tracker = tracker
+
+        return HStack(spacing: 8) {
+            modePill("Auto", isSelected: !tracker.hasCustomGoals) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    tracker.hasCustomGoals = false
+                    tracker.hasCustomMacros = false
+                }
+            }
+            modePill("Custom", isSelected: tracker.hasCustomGoals) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    tracker.hasCustomGoals = true
+                    tracker.hasCustomMacros = true
+                }
+            }
+        }
+    }
+
     // MARK: - Calorie Goal
 
     private var calorieSection: some View {
@@ -89,15 +186,17 @@ struct GoalsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Slider(
-                    value: Binding(
-                        get: { Double(tracker.calorieGoalSetting) },
-                        set: { tracker.calorieGoalSetting = Int(($0 / 50).rounded() * 50) }
-                    ),
-                    in: 500...6000,
-                    step: 50
-                )
-                .tint(Color.umdRed)
+                if tracker.hasCustomGoals {
+                    Slider(
+                        value: Binding(
+                            get: { Double(tracker.calorieGoalSetting) },
+                            set: { tracker.calorieGoalSetting = Int(($0 / 50).rounded() * 50) }
+                        ),
+                        in: 500...6000,
+                        step: 50
+                    )
+                    .tint(Color.umdRed)
+                }
             }
             .padding()
             .background(Color(.systemBackground))
@@ -119,16 +218,6 @@ struct GoalsView: View {
                 .padding(.horizontal, 4)
 
             VStack(spacing: 12) {
-                // Auto / Custom toggle
-                HStack(spacing: 8) {
-                    macroModePill("Auto", isSelected: !tracker.hasCustomMacros) {
-                        withAnimation(.easeInOut(duration: 0.2)) { tracker.hasCustomMacros = false }
-                    }
-                    macroModePill("Custom", isSelected: tracker.hasCustomMacros) {
-                        withAnimation(.easeInOut(duration: 0.2)) { tracker.hasCustomMacros = true }
-                    }
-                }
-
                 if tracker.hasCustomMacros {
                     macroSliderRow(label: "Protein", value: $tracker.proteinGoal, color: .blue)
                     macroSliderRow(label: "Carbs", value: $tracker.carbsGoal, color: .green)
@@ -146,7 +235,7 @@ struct GoalsView: View {
         }
     }
 
-    private func macroModePill(_ label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func modePill(_ label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 Text(label)

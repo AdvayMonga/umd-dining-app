@@ -281,11 +281,12 @@ async def get_ranked_menu(
         return await db.preferences.find_one({'user_id': user_id}, {'_id': 0}) or {}
 
     async def fetch_user_view_counts():
-        """Get rec_nums this user has viewed, with counts."""
+        """Get rec_nums this user has viewed in the last 14 days, with counts."""
         if not user_id:
             return {}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
         pipeline = [
-            {'$match': {'user_id': user_id}},
+            {'$match': {'user_id': user_id, 'timestamp': {'$gte': cutoff}}},
             {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
         ]
         result = {}
@@ -298,13 +299,12 @@ async def get_ranked_menu(
         return await _get_global_views()
 
     async def fetch_recent_hall_interest():
-        """Get dining halls the user has recently engaged with."""
+        """Get dining halls the user has recently engaged with (last 14 days)."""
         if not user_id:
             return {}
-        # Simple approach: get recent views, look up hall from the source field
-        # or from the rec_num -> menu mapping we already have
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
         docs = await db.item_views.find(
-            {'user_id': user_id},
+            {'user_id': user_id, 'timestamp': {'$gte': cutoff}},
             {'_id': 0, 'rec_num': 1}
         ).sort('timestamp', -1).limit(50).to_list(None)
         if not docs:
@@ -900,6 +900,7 @@ async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
         'indian': ['Chicken Tikka Masala', 'Butter Chicken Curry', 'Vegetable Biryani', 'Naan Bread', 'Chana Masala'],
         'southern': ['Fried Chicken', 'Cornbread', 'Collard Greens', 'Mashed Potatoes and Gravy', 'BBQ Pulled Pork'],
         'breakfast': ['Pancakes with Syrup', 'Scrambled Eggs and Bacon', 'French Toast', 'Breakfast Burrito', 'Waffles'],
+        'healthy': ['Garden Salad', 'Quinoa Bowl', 'Grilled Chicken Salad', 'Fresh Fruit Cup', 'Smoothie Bowl'],
     }
 
     sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)

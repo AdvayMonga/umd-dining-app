@@ -10,6 +10,7 @@ struct FilterOverlay: View {
     @Binding var filterHighProtein: Bool
     @Binding var filterAllergens: Set<String>
 
+    var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     private let allergenOptions = [
@@ -17,7 +18,8 @@ struct FilterOverlay: View {
         "Contains egg",
         "Contains fish",
         "Contains gluten",
-        "Contains shellfish",
+        "Contains nuts",
+        "Contains Shellfish",
         "Contains sesame",
         "Contains soy"
     ]
@@ -67,20 +69,22 @@ struct FilterOverlay: View {
 
                     // --- Allergens ---
                     sectionCard("Allergens to Avoid") {
-                        ForEach(allergenOptions, id: \.self) { allergen in
-                            selectablePill(
-                                allergen.replacingOccurrences(of: "Contains ", with: ""),
-                                isOn: Binding(
-                                    get: { filterAllergens.contains(allergen) },
-                                    set: { isOn in
-                                        if isOn {
-                                            filterAllergens.insert(allergen)
-                                        } else {
-                                            filterAllergens.remove(allergen)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(allergenOptions, id: \.self) { allergen in
+                                selectablePill(
+                                    allergen.replacingOccurrences(of: "Contains ", with: "").replacingOccurrences(of: "tree nuts", with: "Nuts"),
+                                    isOn: Binding(
+                                        get: { filterAllergens.contains(allergen) },
+                                        set: { isOn in
+                                            if isOn {
+                                                filterAllergens.insert(allergen)
+                                            } else {
+                                                filterAllergens.remove(allergen)
+                                            }
                                         }
-                                    }
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
 
@@ -94,7 +98,9 @@ struct FilterOverlay: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        if let onDismiss { onDismiss() } else { dismiss() }
+                    }
                 }
             }
         }

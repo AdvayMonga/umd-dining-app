@@ -6,39 +6,65 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showSearch = false
     @State private var showFilter = false
-    @State private var scrollProxy: ScrollViewProxy?
+    @Namespace private var namespace
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                header
-                mealPicker
-                content
-            }
-            .background(Color(.systemGroupedBackground))
-            .gesture(
-                DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                    .onEnded { value in
-                        // Require mostly-horizontal swipe (not vertical scrolling)
-                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                        let periods = viewModel.availableMealPeriods
-                        guard let idx = periods.firstIndex(of: viewModel.selectedMealPeriod) else { return }
-                        if value.translation.width < -20 && idx < periods.count - 1 {
-                            withAnimation { viewModel.selectedMealPeriod = periods[idx + 1] }
-                        } else if value.translation.width > 20 && idx > 0 {
-                            withAnimation { viewModel.selectedMealPeriod = periods[idx - 1] }
+        ZStack {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    header
+                    mealPicker
+                    TabView(selection: $viewModel.selectedMealPeriod) {
+                        ForEach(viewModel.availableMealPeriods, id: \.self) { period in
+                            content
+                                .tag(period)
                         }
                     }
-            )
-            .task {
-                viewModel.autoSelectMealPeriod()
-                await viewModel.loadMenus()
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.easeInOut(duration: 0.25), value: viewModel.selectedMealPeriod)
+                }
+                .background(Color(.systemGroupedBackground))
+                .task {
+                    viewModel.autoSelectMealPeriod()
+                    await viewModel.loadMenus()
+                }
+                .onChange(of: viewModel.selectedDate) {
+                    Task { await viewModel.loadMenus() }
+                }
             }
-            .onChange(of: viewModel.selectedDate) {
-                Task { await viewModel.loadMenus() }
+
+            // Filter overlay
+            if showFilter {
+                FilterOverlay(
+                    selectedHallIds: $viewModel.selectedHallIds,
+                    hallNames: viewModel.diningHallNames,
+                    allHallIds: viewModel.allHallIds,
+                    filterVegetarian: $viewModel.filterVegetarian,
+                    filterVegan: $viewModel.filterVegan,
+                    filterHighProtein: $viewModel.filterHighProtein,
+                    filterAllergens: $viewModel.filterAllergens,
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.3)) { showFilter = false }
+                        Task { await viewModel.loadMenus() }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(1)
             }
-            .onChange(of: viewModel.selectedMealPeriod) {
-                withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
+
+            // Search overlay
+            if showSearch {
+                SearchOverlay(
+                    menuItems: viewModel.allItems,
+                    hallNames: viewModel.diningHallNames,
+                    selectedDate: viewModel.selectedDate,
+                    selectedMealPeriod: viewModel.selectedMealPeriod,
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.3)) { showSearch = false }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(2)
             }
         }
         .id(tabResetID)
@@ -60,14 +86,14 @@ struct HomeView: View {
 
             CalendarCardButton(selection: $viewModel.selectedDate)
 
-            Button { showSearch = true } label: {
+            Button { withAnimation(.easeInOut(duration: 0.3)) { showSearch = true } } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.title2)
                     .foregroundStyle(Color.umdRed)
                     .frame(width: 44, height: 44)
             }
 
-            Button { showFilter = true } label: {
+            Button { withAnimation(.easeInOut(duration: 0.3)) { showFilter = true } } label: {
                 Image(systemName: "line.3.horizontal.decrease")
                     .font(.title2)
                     .foregroundStyle(Color.umdRed)
@@ -76,33 +102,6 @@ struct HomeView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
-        .sheet(isPresented: $showFilter, onDismiss: {
-            Task {
-                await viewModel.loadMenus()
-                withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
-            }
-        }) {
-            FilterOverlay(
-                selectedHallIds: $viewModel.selectedHallIds,
-                hallNames: viewModel.diningHallNames,
-                allHallIds: viewModel.allHallIds,
-                filterVegetarian: $viewModel.filterVegetarian,
-                filterVegan: $viewModel.filterVegan,
-                filterHighProtein: $viewModel.filterHighProtein,
-                filterAllergens: $viewModel.filterAllergens
-            )
-            .presentationDetents([.large])
-        }
-        .fullScreenCover(isPresented: $showSearch, onDismiss: {
-            withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
-        }) {
-            SearchOverlay(
-                menuItems: viewModel.allItems,
-                hallNames: viewModel.diningHallNames,
-                selectedDate: viewModel.selectedDate,
-                selectedMealPeriod: viewModel.selectedMealPeriod
-            )
-        }
     }
 
     private var mealPicker: some View {
@@ -159,11 +158,9 @@ struct HomeView: View {
             )
             Spacer()
         } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        Color.clear.frame(height: 0).id("top")
-                        ForEach(viewModel.displayRows) { row in
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(viewModel.displayRows) { row in
                         switch row {
                         case .stationHeader(let station, let hallId, _):
                             StationHeaderRow(
@@ -172,7 +169,8 @@ struct HomeView: View {
                                 diningHallId: hallId,
                                 items: viewModel.itemsForStation(station: station, hallId: hallId),
                                 selectedDate: viewModel.selectedDate,
-                                selectedMealPeriod: viewModel.selectedMealPeriod
+                                selectedMealPeriod: viewModel.selectedMealPeriod,
+                                namespace: namespace
                             )
                         case .seeMore:
                             Button {
@@ -193,24 +191,25 @@ struct HomeView: View {
                             }
                             .buttonStyle(.plain)
                         case .menuItem(let item):
-                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")) {
+                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")
+                                .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
+                            ) {
                                 FoodItemRow(
                                     item: item,
                                     diningHallName: viewModel.diningHallName(for: item.diningHallId)
                                 )
                             }
+                            .matchedTransitionSource(id: item.recNum, in: namespace)
                             .buttonStyle(.plain)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                 }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
-                .refreshable {
-                    await viewModel.forceReloadMenus()
-                }
-                .onAppear { scrollProxy = proxy }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .refreshable {
+                await viewModel.forceReloadMenus()
             }
         }
     }

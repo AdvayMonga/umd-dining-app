@@ -8,6 +8,8 @@ struct SearchOverlay: View {
     var hallNames: [String: String] = [:]
     var selectedDate: Date = .now
     var selectedMealPeriod: String = "Lunch"
+    var onDismiss: (() -> Void)?
+    @Namespace private var namespace
 
     var body: some View {
         NavigationStack {
@@ -53,6 +55,7 @@ struct SearchOverlay: View {
                                         .padding(.horizontal, 4)
 
                                     ForEach(viewModel.stationResults) { station in
+                                        let stationId = "\(station.station)-\(station.diningHallId)"
                                         NavigationLink {
                                             StationPageView(
                                                 station: station.station,
@@ -62,6 +65,7 @@ struct SearchOverlay: View {
                                                 initialDate: selectedDate,
                                                 initialMealPeriod: selectedMealPeriod
                                             )
+                                            .navigationTransition(.zoom(sourceID: stationId, in: namespace))
                                         } label: {
                                             HStack {
                                                 VStack(alignment: .leading, spacing: 2) {
@@ -85,6 +89,7 @@ struct SearchOverlay: View {
                                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                                             .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
                                         }
+                                        .matchedTransitionSource(id: stationId, in: namespace)
                                         .buttonStyle(.plain)
                                     }
                                 }
@@ -100,7 +105,9 @@ struct SearchOverlay: View {
                                         .padding(.horizontal, 4)
 
                                     ForEach(viewModel.results) { item in
-                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station.isEmpty ? nil : item.station, diningHallName: item.diningHallName.isEmpty ? nil : item.diningHallName, source: "search")) {
+                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station.isEmpty ? nil : item.station, diningHallName: item.diningHallName.isEmpty ? nil : item.diningHallName, source: "search")
+                                            .navigationTransition(.zoom(sourceID: "search-\(item.recNum)", in: namespace))
+                                        ) {
                                             HStack(spacing: 12) {
                                                 VStack(alignment: .leading, spacing: 4) {
                                                     Text(item.name)
@@ -117,6 +124,10 @@ struct SearchOverlay: View {
                                                                 .font(.caption)
                                                                 .foregroundStyle(.secondary)
                                                         }
+                                                    } else {
+                                                        Text("Unavailable today")
+                                                            .font(.caption)
+                                                            .foregroundStyle(.secondary)
                                                     }
                                                 }
 
@@ -138,6 +149,7 @@ struct SearchOverlay: View {
                                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                                             .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
                                         }
+                                        .matchedTransitionSource(id: "search-\(item.recNum)", in: namespace)
                                         .buttonStyle(.plain)
                                     }
                                 }
@@ -157,7 +169,9 @@ struct SearchOverlay: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Close") {
+                        if let onDismiss { onDismiss() } else { dismiss() }
+                    }
                 }
             }
         }

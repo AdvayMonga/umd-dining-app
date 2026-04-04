@@ -75,6 +75,8 @@ class FavoritesManager {
     func clearAll() {
         favoriteFoods = [:]
         favoriteStations = []
+        UserDefaults.standard.removeObject(forKey: foodsKey)
+        UserDefaults.standard.removeObject(forKey: stationsKey)
     }
 
     private func saveFoodsLocally() {

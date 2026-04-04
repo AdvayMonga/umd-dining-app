@@ -21,7 +21,8 @@ struct ProfileView: View {
         ("Contains egg", "Egg"),
         ("Contains fish", "Fish"),
         ("Contains gluten", "Gluten"),
-        ("Contains shellfish", "Shellfish"),
+        ("Contains nuts", "Nuts"),
+        ("Contains Shellfish", "Shellfish"),
         ("Contains sesame", "Sesame"),
         ("Contains soy", "Soy"),
     ]
@@ -32,58 +33,53 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         Color.clear.frame(height: 0).id("profileTop")
-                        // --- Account header (MOVED TO TOP) ---
-                        if AuthManager.shared.isGuest {
+                        // --- Account ---
                         sectionCard("Account") {
-                            VStack(spacing: 8) {
-                                Text("Sign in to save your preferences")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                                SignInWithAppleButton(.signIn) { request in
-                                    request.requestedScopes = []
-                                } onCompletion: { result in
-                                    switch result {
-                                    case .success(let authorization):
-                                        if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                                            isUpgrading = true
-                                            Task {
-                                                await AuthManager.shared.upgradeToApple(credential: credential)
-                                                isUpgrading = false
-                                            }
-                                        }
-                                    case .failure(let error):
-                                        upgradeError = "Sign in failed. Please try again."
-                                        print("Upgrade failed: \(error.localizedDescription)")
-                                    }
-                                }
-                                .signInWithAppleButtonStyle(isDarkMode ? .black : .white)
-                                .frame(height: 44)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3), lineWidth: 1))
-                                .disabled(isUpgrading)
-
-                                Button {
-                                    showDeleteAlert = true
-                                } label: {
-                                    Text("Delete Account")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.red)
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 44)
-                                        .background(Color.red.opacity(0.12))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.3), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            contactCard
                         }
-                    } else {
-                        accountHeader
-                    }
+
+                        if AuthManager.shared.isGuest {
+                            VStack(spacing: 8) {
+                                    SignInWithAppleButton(.signIn) { request in
+                                        request.requestedScopes = [.fullName]
+                                    } onCompletion: { result in
+                                        switch result {
+                                        case .success(let authorization):
+                                            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                                                isUpgrading = true
+                                                Task {
+                                                    await AuthManager.shared.upgradeToApple(credential: credential)
+                                                    isUpgrading = false
+                                                }
+                                            }
+                                        case .failure(let error):
+                                            upgradeError = "Sign in failed. Please try again."
+                                            print("Upgrade failed: \(error.localizedDescription)")
+                                        }
+                                    }
+                                    .signInWithAppleButtonStyle(isDarkMode ? .black : .white)
+                                    .frame(height: 44)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3), lineWidth: 1))
+                                    .disabled(isUpgrading)
+
+                                    Button {
+                                        showDeleteAlert = true
+                                    } label: {
+                                        Text("Delete Account")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.red)
+                                            .frame(maxWidth: .infinity)
+                                            .frame(height: 44)
+                                            .background(Color.red.opacity(0.12))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.3), lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 4)
+                        }
 
                     // --- General ---
                     sectionCard("General") {
@@ -91,6 +87,15 @@ struct ProfileView: View {
                             label: isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                             icon: isDarkMode ? "sun.max.fill" : "moon.fill",
                             action: { isDarkMode.toggle() }
+                        )
+                        togglePill(
+                            label: "Send Feedback",
+                            icon: "envelope",
+                            action: {
+                                if let url = URL(string: "https://forms.gle/53RrYDkmZjmf72Py9") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
                         )
                     }
 
@@ -109,14 +114,16 @@ struct ProfileView: View {
 
                     // --- Allergens ---
                     sectionCard("Allergens to Avoid") {
-                        ForEach(allergenOptions, id: \.0) { key, label in
-                            selectablePill(label, isOn: Binding(
-                                get: { preferences.allergens.contains(key) },
-                                set: { on in
-                                    if on { preferences.allergens.insert(key) }
-                                    else { preferences.allergens.remove(key) }
-                                }
-                            ))
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(allergenOptions, id: \.0) { key, label in
+                                selectablePill(label, isOn: Binding(
+                                    get: { preferences.allergens.contains(key) },
+                                    set: { on in
+                                        if on { preferences.allergens.insert(key) }
+                                        else { preferences.allergens.remove(key) }
+                                    }
+                                ))
+                            }
                         }
                     }
 
@@ -268,46 +275,72 @@ struct ProfileView: View {
         .id(tabResetID)
     }
 
-    // MARK: - Account Header
+    // MARK: - Contact Card
 
-    private var accountHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(AuthManager.shared.isGuest ? "Guest User" : "Signed In")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+    private var contactCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 14) {
+                // Avatar
+                ZStack {
+                    Circle()
+                        .fill(AuthManager.shared.isGuest
+                              ? Color.gray.opacity(0.3)
+                              : Color.umdRed.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: AuthManager.shared.isGuest ? "person.fill" : "person.crop.circle.fill")
+                        .font(.system(size: AuthManager.shared.isGuest ? 24 : 28))
+                        .foregroundStyle(AuthManager.shared.isGuest ? .secondary : Color.umdRed)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if AuthManager.shared.isGuest {
+                        Text("Guest User")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("Sign in to save your data")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(AuthManager.shared.displayName ?? "Apple User")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("Apple Account")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
                 if !AuthManager.shared.isGuest {
-                    Text("Apple Account")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            VStack(spacing: 8) {
-                Button {
-                    showSignOutAlert = true
-                } label: {
-                    Text("Sign Out")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.umdRed)
-                        .clipShape(Capsule())
-                }
-                Button {
-                    showDeleteAlert = true
-                } label: {
-                    Text("Delete Account")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    VStack(spacing: 8) {
+                        Button {
+                            showSignOutAlert = true
+                        } label: {
+                            Text("Sign Out")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.umdRed)
+                                .clipShape(Capsule())
+                        }
+                        Button {
+                            showDeleteAlert = true
+                        } label: {
+                            Text("Delete Account")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
             }
         }
         .padding(16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.gray.opacity(0.3), lineWidth: 1))
     }
 
     // MARK: - Sign Out Overlay (centered, hard to miss)
@@ -385,6 +418,7 @@ struct ProfileView: View {
                             print("Delete account API error: \(error)")
                         }
                         AuthManager.shared.signOut()
+                        UserDefaults.standard.set(false, forKey: "hasCompletedPalateSurvey")
                         isDeleting = false
                     }
                 } label: {
