@@ -6,7 +6,6 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showSearch = false
     @State private var showFilter = false
-    @State private var scrollProxy: ScrollViewProxy?
 
     var body: some View {
         NavigationStack {
@@ -37,9 +36,7 @@ struct HomeView: View {
             .onChange(of: viewModel.selectedDate) {
                 Task { await viewModel.loadMenus() }
             }
-            .onChange(of: viewModel.selectedMealPeriod) {
-                withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
-            }
+
         }
         .id(tabResetID)
         .onChange(of: tabResetID) {
@@ -77,10 +74,7 @@ struct HomeView: View {
         .padding(.horizontal)
         .padding(.vertical, 12)
         .sheet(isPresented: $showFilter, onDismiss: {
-            Task {
-                await viewModel.loadMenus()
-                withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
-            }
+            Task { await viewModel.loadMenus() }
         }) {
             FilterOverlay(
                 selectedHallIds: $viewModel.selectedHallIds,
@@ -93,9 +87,7 @@ struct HomeView: View {
             )
             .presentationDetents([.large])
         }
-        .fullScreenCover(isPresented: $showSearch, onDismiss: {
-            withAnimation { scrollProxy?.scrollTo("top", anchor: .top) }
-        }) {
+        .fullScreenCover(isPresented: $showSearch, onDismiss: {}) {
             SearchOverlay(
                 menuItems: viewModel.allItems,
                 hallNames: viewModel.diningHallNames,
@@ -159,11 +151,9 @@ struct HomeView: View {
             )
             Spacer()
         } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        Color.clear.frame(height: 0).id("top")
-                        ForEach(viewModel.displayRows) { row in
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(viewModel.displayRows) { row in
                         switch row {
                         case .stationHeader(let station, let hallId, _):
                             StationHeaderRow(
@@ -204,13 +194,12 @@ struct HomeView: View {
                         }
                     }
                 }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
-                .refreshable {
-                    await viewModel.forceReloadMenus()
-                }
-                .onAppear { scrollProxy = proxy }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .id(viewModel.selectedMealPeriod)
+            .refreshable {
+                await viewModel.forceReloadMenus()
             }
         }
     }
