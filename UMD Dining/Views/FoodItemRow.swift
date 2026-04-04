@@ -164,23 +164,25 @@ struct FoodItemRow: View {
     }
 
     private func shortLabel(for icon: String) -> String {
-        switch icon {
+        switch icon.lowercased() {
         case "vegan": return "V"
         case "vegetarian": return "VG"
-        case "Contains dairy": return "Dairy"
-        case "Contains egg": return "Egg"
-        case "Contains fish": return "Fish"
-        case "Contains gluten": return "Gluten"
-        case "Contains shellfish": return "Shellfish"
-        case "Contains sesame": return "Sesame"
-        case "Contains soy": return "Soy"
+        case "contains dairy": return "Dairy"
+        case "contains egg": return "Egg"
+        case "contains fish": return "Fish"
+        case "contains gluten": return "Gluten"
+        case "contains shellfish": return "Shellfish"
+        case "contains sesame": return "Sesame"
+        case "contains soy": return "Soy"
+        case "contains nuts", "contains peanuts": return "Nuts"
+        case "halal friendly", "halalfriendly", "halal": return "Halal Friendly"
         default: return icon
         }
     }
 
     private func color(for icon: String) -> Color {
-        switch icon {
-        case "vegan", "vegetarian": return .green
+        switch icon.lowercased() {
+        case "vegan", "vegetarian", "halal friendly", "halalfriendly", "halal": return .green
         default: return .orange
         }
     }

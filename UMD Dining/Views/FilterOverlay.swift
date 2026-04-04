@@ -82,6 +82,18 @@ struct FilterOverlay: View {
                                 )
                             )
                         }
+                        selectablePill("Nuts", isOn: Binding(
+                            get: { filterAllergens.contains("Contains nuts") || filterAllergens.contains("Contains peanuts") },
+                            set: { isOn in
+                                if isOn {
+                                    filterAllergens.insert("Contains nuts")
+                                    filterAllergens.insert("Contains peanuts")
+                                } else {
+                                    filterAllergens.remove("Contains nuts")
+                                    filterAllergens.remove("Contains peanuts")
+                                }
+                            }
+                        ))
                     }
 
                     Spacer().frame(height: 40)

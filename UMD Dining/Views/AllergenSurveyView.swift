@@ -8,6 +8,7 @@ struct AllergenOption: Identifiable {
 
 struct AllergenSurveyView: View {
     var onComplete: () -> Void
+    var isOnboarding: Bool = true
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
 
@@ -19,6 +20,7 @@ struct AllergenSurveyView: View {
         AllergenOption(id: "Contains shellfish", label: "Shellfish", icon: "🦐"),
         AllergenOption(id: "Contains sesame", label: "Sesame", icon: "🫘"),
         AllergenOption(id: "Contains soy", label: "Soy", icon: "🫛"),
+        AllergenOption(id: "Contains nuts", label: "Nuts", icon: "🥜"),
     ]
 
     var body: some View {
@@ -50,11 +52,13 @@ struct AllergenSurveyView: View {
 
             VStack(spacing: 12) {
                 Button {
-                    UserPreferences.shared.allergens = selected
+                    var toSave = selected
+                    if toSave.contains("Contains nuts") { toSave.insert("Contains peanuts") }
+                    UserPreferences.shared.allergens = toSave
                     onComplete()
                     dismiss()
                 } label: {
-                    Text(selected.isEmpty ? "No Allergies" : "Continue")
+                    Text(isOnboarding ? (selected.isEmpty ? "No Allergies" : "Continue") : "Done")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -78,7 +82,10 @@ struct AllergenSurveyView: View {
         }
         .background(Color(.systemGroupedBackground))
         .onAppear {
-            selected = UserPreferences.shared.allergens
+            var prefs = UserPreferences.shared.allergens
+            // Map peanuts back to the grouped nuts key for display
+            if prefs.contains("Contains peanuts") { prefs.insert("Contains nuts") }
+            selected = prefs
         }
     }
 
