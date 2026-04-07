@@ -934,6 +934,34 @@ async def backfill_similar(_: None = Depends(require_admin)):
     return {'success': True, 'status': 'backfill started in background'}
 
 
+@router.post('/api/backfill-frequency')
+async def backfill_frequency(_: None = Depends(require_admin)):
+    def _run():
+        from pymongo import MongoClient, UpdateOne
+        sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
+        sync_db = sync_client.get_default_database()
+
+        entries = list(sync_db.menus.find({'frequency': {'$exists': False}}, {'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'date': 1, '_id': 1}))
+        ops = []
+        seen = {}
+        for entry in entries:
+            key = (entry['rec_num'], entry['station'], entry['dining_hall_id'])
+            if key not in seen:
+                seen[key] = len(sync_db.menus.distinct('date', {
+                    'rec_num': entry['rec_num'],
+                    'station': entry['station'],
+                    'dining_hall_id': entry['dining_hall_id'],
+                }))
+            ops.append(UpdateOne({'_id': entry['_id']}, {'$set': {'frequency': seen[key]}}))
+
+        if ops:
+            sync_db.menus.bulk_write(ops, ordered=False)
+        print(f"Backfilled frequency for {len(ops)} menu entries")
+        sync_client.close()
+    threading.Thread(target=_run, daemon=False).start()
+    return {'success': True, 'status': 'frequency backfill started in background'}
+
+
 @router.post('/api/cuisine-embeddings/generate')
 async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
     from embeddings import generate_embedding, compute_centroid

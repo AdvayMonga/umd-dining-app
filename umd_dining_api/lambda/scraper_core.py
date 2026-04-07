@@ -279,7 +279,35 @@ def scrape_dining_hall(db, location_num, date):
             except Exception as e:
                 print(f"Failed to fetch nutrition for {item['name']}: {e}")
 
+    # Compute and store frequency for each item at this station
+    _compute_frequencies(db, location_num, date, items)
+
     return items, new_food_count
+
+
+def _compute_frequencies(db, dining_hall_id, date, items):
+    """Count how many distinct dates each rec_num appears at its station (last 14 days)."""
+    from pymongo import UpdateOne
+    cutoff = (datetime.now() - timedelta(days=14)).strftime('%-m/%-d/%Y')
+
+    rec_stations = set()
+    for item in items:
+        rec_stations.add((item['rec_num'], item['station']))
+
+    ops = []
+    for rec_num, station in rec_stations:
+        count = len(db.menus.distinct('date', {
+            'rec_num': rec_num,
+            'station': station,
+            'dining_hall_id': dining_hall_id,
+        }))
+        ops.append(UpdateOne(
+            {'date': date, 'dining_hall_id': dining_hall_id, 'rec_num': rec_num, 'station': station},
+            {'$set': {'frequency': count}},
+        ))
+
+    if ops:
+        db.menus.bulk_write(ops, ordered=False)
 
 
 def scrape_all_dining_halls(db):

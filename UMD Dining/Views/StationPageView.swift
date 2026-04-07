@@ -107,10 +107,10 @@ struct StationPageView: View {
                 }
             }
         }
-        .onAppear {
+        .task {
             selectedDate = initialDate
             selectedMealPeriod = initialMealPeriod
-            allItems = initialItems
+            await loadItems()
         }
         .onChange(of: selectedDate) {
             Task { await loadItems() }
@@ -125,11 +125,9 @@ struct StationPageView: View {
 
     private func loadItems() async {
         do {
-            let userId = await AuthManager.shared.userId
-            let menuItems = try await DiningAPIService.shared.fetchRankedMenu(
+            let menuItems = try await DiningAPIService.shared.fetchMenu(
                 date: dateString,
-                diningHallIds: [diningHallId],
-                userId: userId
+                diningHallId: diningHallId
             )
             allItems = menuItems.filter { $0.station == station }
             if !availableMealPeriods.contains(selectedMealPeriod),

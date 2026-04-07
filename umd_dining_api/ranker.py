@@ -213,6 +213,19 @@ def rank_items(
                         score += 25
                         signals.add('somewhat_similar')
 
+        # --- Frequency signal (boost specials, penalize staples) ---
+        frequency = entry.get('frequency', 1)
+        meal = entry.get('meal_period', '')
+        is_breakfast = meal in ('Breakfast', 'Brunch')
+        is_fav = rec_num in fav_rec_nums
+
+        if frequency <= 3:
+            score += 25
+            signals.add('rotating_special')
+        elif frequency >= 8 and not is_fav and not is_breakfast:
+            score -= 15
+            signals.add('daily_staple')
+
         # --- Filters ---
 
         # Drop untagged sides

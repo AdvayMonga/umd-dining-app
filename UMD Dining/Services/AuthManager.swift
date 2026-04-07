@@ -135,7 +135,7 @@ class AuthManager {
         let provider = ASAuthorizationAppleIDProvider()
         do {
             let state = try await provider.credentialState(forUserID: userId)
-            if state == .revoked || state == .notFound {
+            if state == .revoked {
                 signOut()
             }
         } catch {
