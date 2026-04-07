@@ -20,12 +20,16 @@ class UserPreferences {
     var cuisinePrefs: [String] {
         didSet { saveLocally(); syncToServer() }
     }
+    var preferredDiningHalls: Set<String> {
+        didSet { saveLocally(); syncToServer() }
+    }
 
     private let vegetarianKey = "pref_vegetarian"
     private let veganKey = "pref_vegan"
     private let halalKey = "pref_halal"
     private let allergensKey = "pref_allergens"
     private let cuisinePrefsKey = "pref_cuisine_prefs"
+    private let diningHallsKey = "pref_dining_halls"
 
     init() {
         self.vegetarian = UserDefaults.standard.bool(forKey: "pref_vegetarian")
@@ -34,6 +38,8 @@ class UserPreferences {
         let stored = UserDefaults.standard.stringArray(forKey: "pref_allergens") ?? []
         self.allergens = Set(stored)
         self.cuisinePrefs = UserDefaults.standard.stringArray(forKey: "pref_cuisine_prefs") ?? []
+        let storedHalls = UserDefaults.standard.stringArray(forKey: "pref_dining_halls") ?? []
+        self.preferredDiningHalls = Set(storedHalls)
     }
 
     func shouldHide(item: MenuItem) -> Bool {
@@ -63,6 +69,7 @@ class UserPreferences {
             vegan = prefs.vegan
             allergens = Set(prefs.allergens)
             cuisinePrefs = prefs.cuisinePrefs
+            preferredDiningHalls = Set(prefs.preferredDiningHalls)
         } catch {
             // Keep local values if API fails
         }
@@ -74,11 +81,13 @@ class UserPreferences {
         halal = false
         allergens = []
         cuisinePrefs = []
+        preferredDiningHalls = []
         UserDefaults.standard.removeObject(forKey: vegetarianKey)
         UserDefaults.standard.removeObject(forKey: veganKey)
         UserDefaults.standard.removeObject(forKey: halalKey)
         UserDefaults.standard.removeObject(forKey: allergensKey)
         UserDefaults.standard.removeObject(forKey: cuisinePrefsKey)
+        UserDefaults.standard.removeObject(forKey: diningHallsKey)
     }
 
     private func saveLocally() {
@@ -87,6 +96,7 @@ class UserPreferences {
         UserDefaults.standard.set(halal, forKey: halalKey)
         UserDefaults.standard.set(Array(allergens), forKey: allergensKey)
         UserDefaults.standard.set(cuisinePrefs, forKey: cuisinePrefsKey)
+        UserDefaults.standard.set(Array(preferredDiningHalls), forKey: diningHallsKey)
     }
 
     private func syncToServer() {
@@ -97,7 +107,8 @@ class UserPreferences {
                 vegetarian: vegetarian,
                 vegan: vegan,
                 allergens: Array(allergens),
-                cuisinePrefs: cuisinePrefs
+                cuisinePrefs: cuisinePrefs,
+                preferredDiningHalls: Array(preferredDiningHalls)
             )
         }
     }

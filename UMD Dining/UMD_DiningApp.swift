@@ -14,7 +14,7 @@ struct UMD_DiningApp: App {
         WindowGroup {
             if authManager.isSignedIn {
                 if !hasCompletedSurvey {
-                    PalateSurveyView {
+                    OnboardingView {
                         hasCompletedSurvey = true
                     }
                     .preferredColorScheme(isDarkMode ? .dark : .light)

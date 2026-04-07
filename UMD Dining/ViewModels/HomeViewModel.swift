@@ -64,7 +64,8 @@ class HomeViewModel {
     private var currentCacheKey: String {
         let allergenStr = filterAllergens.sorted().joined(separator: ",")
         let cuisinePrefs = UserPreferences.shared.cuisinePrefs.sorted().joined(separator: ",")
-        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHalal)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)"
+        let hallPrefs = UserPreferences.shared.preferredDiningHalls.sorted().joined(separator: ",")
+        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHalal)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)|\(hallPrefs)"
     }
 
     // Snapshot of favorites at load time — keeps feed order stable until refresh

@@ -53,6 +53,26 @@ async def _get_trending():
     return result
 
 
+# --- Trending searches cache (5-min TTL) ---
+_trending_searches_cache: dict = {'data': [], 'expires': 0}
+
+async def _get_trending_searches():
+    now = time.time()
+    if now < _trending_searches_cache['expires']:
+        return _trending_searches_cache['data']
+    pipeline = [
+        {'$group': {'_id': {'$toLower': '$query'}, 'count': {'$sum': 1}}},
+        {'$sort': {'count': -1}},
+        {'$limit': 10}
+    ]
+    result = []
+    async for doc in db.search_queries.aggregate(pipeline):
+        if doc['_id'] and len(doc['_id']) >= 2:
+            result.append(doc['_id'])
+    _trending_searches_cache.update({'data': result, 'expires': now + 300})
+    return result
+
+
 # --- Global view counts cache (5-min TTL) ---
 _global_views_cache: dict = {'data': {}, 'expires': 0}
 
@@ -134,6 +154,7 @@ class PreferencesBody(BaseModel):
     vegan: bool = False
     allergens: list[str] = []
     cuisine_prefs: list[str] = []
+    preferred_dining_halls: list[str] = []
 
 class IntakeBody(BaseModel):
     rec_num: str
@@ -196,6 +217,7 @@ h1{font-size:36px;font-weight:700;color:#E21833;margin-bottom:6px;letter-spacing
 <p class="subtitle">University of Maryland</p>
 <div class="divider"></div>
 <p class="tagline">Personalized dining hall recommendations powered by AI. Find what you want to eat, track your nutrition, and never miss your favorites.</p>
+<a href="https://apps.apple.com/us/app/umd-dining/id6761645776" target="_blank" style="display:inline-block;margin-bottom:28px"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" style="height:44px"></a>
 <div class="features">
 <div class="feature"><span class="feature-icon">🎯</span><span class="feature-text">AI-powered food recommendations</span></div>
 <div class="feature"><span class="feature-icon">🥗</span><span class="feature-text">Dietary filters &amp; allergen alerts</span></div>
@@ -410,8 +432,10 @@ async def get_ranked_menu(
             filtered_entries.append(entry)
         menu_entries = filtered_entries
 
-    # --- Phase 3: Fetch embeddings only if user has favorites ---
+    # --- Phase 3: Fetch embeddings for favorites and/or cuisine centroids ---
     fav_embeddings = []
+    has_cuisine_prefs = user_id and user_prefs.get('cuisine_prefs')
+
     if user_id and fav_rec_nums:
         fav_food_docs = await db.foods.find(
             {'rec_num': {'$in': list(fav_rec_nums)}, 'embedding': {'$exists': True}},
@@ -419,17 +443,18 @@ async def get_ranked_menu(
         ).to_list(None)
         fav_embeddings = [doc['embedding'] for doc in fav_food_docs if doc.get('embedding')]
 
-        if fav_embeddings:
-            menu_emb_docs = await db.foods.find(
-                {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True}},
-                {'rec_num': 1, 'embedding': 1, '_id': 0}
-            ).to_list(None)
-            for doc in menu_emb_docs:
-                if doc.get('embedding') and doc['rec_num'] in foods:
-                    foods[doc['rec_num']]['embedding'] = doc['embedding']
+    # Fetch menu item embeddings if we have favorites OR cuisine prefs (needed for similarity)
+    if fav_embeddings or has_cuisine_prefs:
+        menu_emb_docs = await db.foods.find(
+            {'rec_num': {'$in': rec_nums}, 'embedding': {'$exists': True}},
+            {'rec_num': 1, 'embedding': 1, '_id': 0}
+        ).to_list(None)
+        for doc in menu_emb_docs:
+            if doc.get('embedding') and doc['rec_num'] in foods:
+                foods[doc['rec_num']]['embedding'] = doc['embedding']
 
     # Blend cuisine centroids: full strength at 0 favs, linearly decreasing to 0.5 at 20+ favs
-    if user_id and user_prefs.get('cuisine_prefs'):
+    if has_cuisine_prefs:
         cuisine_docs = await db.cuisine_embeddings.find(
             {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
             {'embedding': 1, '_id': 0}
@@ -441,6 +466,8 @@ async def get_ranked_menu(
             weight = 1.0 - 0.5 * min(num_favs, 20) / 20  # 1.0 → 0.5 over 0–20 favs
             weighted = [(np.asarray(e, dtype=np.float32) * weight).tolist() for e in cuisine_embs]
             fav_embeddings = fav_embeddings + weighted
+
+    preferred_halls = user_prefs.get('preferred_dining_halls', []) if user_prefs else []
 
     result = rank_items(
         menu_entries=menu_entries,
@@ -454,6 +481,7 @@ async def get_ranked_menu(
         user_views=user_views,
         global_views=global_views,
         hall_interest=hall_interest,
+        preferred_halls=preferred_halls,
     )
 
     response = {'success': True, 'count': len(result), 'data': result}
@@ -839,6 +867,13 @@ async def search_menu(
     return {'success': True, 'query': q, 'count': len(ranked), 'has_semantic': has_semantic, 'data': ranked}
 
 
+@router.get('/api/trending-searches')
+@limiter.limit("30/minute")
+async def get_trending_searches(request: Request):
+    data = await _get_trending_searches()
+    return {'success': True, 'data': data}
+
+
 # ---------------------------------------------------------------------------
 # Engagement tracking
 # ---------------------------------------------------------------------------
@@ -1156,7 +1191,7 @@ async def remove_station_favorite(request: Request,body: StationFavoriteBody = B
 async def get_preferences(request: Request,user_id: str = Depends(get_current_user)):
     prefs = await db.preferences.find_one({'user_id': user_id}, {'_id': 0})
     if not prefs:
-        prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': []}
+        prefs = {'user_id': user_id, 'vegetarian': False, 'vegan': False, 'allergens': [], 'cuisine_prefs': [], 'preferred_dining_halls': []}
     return {'success': True, 'data': prefs}
 
 
@@ -1171,6 +1206,7 @@ async def update_preferences(request: Request,body: PreferencesBody = Body(...),
             'vegan': body.vegan,
             'allergens': body.allergens,
             'cuisine_prefs': body.cuisine_prefs,
+            'preferred_dining_halls': body.preferred_dining_halls,
         }},
         upsert=True
     )

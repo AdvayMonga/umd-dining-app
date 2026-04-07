@@ -16,8 +16,37 @@ class SearchViewModel {
     var isLoading = false
     var errorMessage: String?
     var hasSearched = false
+    var recentSearches: [String] = []
+    var trendingSearches: [String] = []
 
     private var searchTask: Task<Void, Never>?
+    private static let recentsKey = "recentSearches"
+
+    init() {
+        recentSearches = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
+    }
+
+    func saveRecentSearch(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 2 else { return }
+        recentSearches.removeAll { $0.lowercased() == trimmed.lowercased() }
+        recentSearches.insert(trimmed, at: 0)
+        if recentSearches.count > 20 { recentSearches = Array(recentSearches.prefix(20)) }
+        UserDefaults.standard.set(recentSearches, forKey: Self.recentsKey)
+    }
+
+    func loadTrendingSearches() async {
+        do {
+            trendingSearches = try await DiningAPIService.shared.fetchTrendingSearches()
+        } catch {
+            // Silent — trending is best-effort
+        }
+    }
+
+    func clearRecentSearches() {
+        recentSearches = []
+        UserDefaults.standard.removeObject(forKey: Self.recentsKey)
+    }
 
     func search(menuItems: [MenuItem] = [], hallNames: [String: String] = [:]) {
         searchTask?.cancel()
@@ -60,6 +89,9 @@ class SearchViewModel {
             do {
                 results = try await DiningAPIService.shared.searchFoods(query: trimmed)
                 errorMessage = nil
+                if !results.isEmpty || !stationResults.isEmpty {
+                    saveRecentSearch(trimmed)
+                }
                 DiningAPIService.shared.trackSearchQuery(query: trimmed, resultCount: results.count)
             } catch is CancellationError {
                 return

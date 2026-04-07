@@ -53,13 +53,30 @@ def get_fat(nutrition):
     return _get_nutrient(nutrition, 'Total Fat', 'Fat', 'fat')
 
 
+def _count_top_level_ingredients(ingredients_str):
+    """Count ingredients ignoring sub-ingredients in parentheses/brackets."""
+    if not ingredients_str:
+        return 0
+    # Remove everything inside parentheses and brackets
+    cleaned = re.sub(r'\([^)]*\)', '', ingredients_str)
+    cleaned = re.sub(r'\[[^\]]*\]', '', cleaned)
+    parts = [p.strip() for p in cleaned.split(',') if p.strip()]
+    return len(parts)
+
+
 def _is_single_ingredient(food):
-    """Check if a food item has 0 or 1 ingredients (e.g. 'Banana', 'Rice')."""
-    ingredients = food.get('ingredients', '')
-    if not ingredients:
+    """Check if a food item has 0 or 1 top-level ingredients (e.g. 'Banana', 'Rice')."""
+    return _count_top_level_ingredients(food.get('ingredients', '')) <= 1
+
+
+def _is_condiment(food):
+    """Heuristic: low-calorie (<80) items with few top-level ingredients (<=3) are likely condiments/toppings."""
+    nutrition = food.get('nutrition') or {}
+    calories = get_calories(nutrition)
+    ingredient_count = _count_top_level_ingredients(food.get('ingredients', ''))
+    if calories is not None and calories < 80 and ingredient_count <= 3:
         return True
-    parts = [p.strip() for p in ingredients.split(',') if p.strip()]
-    return len(parts) <= 1
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +95,7 @@ def rank_items(
     user_views=None,
     global_views=None,
     hall_interest=None,
+    preferred_halls=None,
 ):
     """
     Score, tag, and sort menu items for the feed.
@@ -105,6 +123,14 @@ def rank_items(
     is_vegetarian = user_prefs.get('vegetarian', False)
     is_vegan = user_prefs.get('vegan', False)
     fav_centroid = compute_centroid(fav_embeddings) if fav_embeddings else None
+    # Similarity thresholds: relaxed with 0 favs (cuisine centroids are broad),
+    # gradually tightening as real favorites provide a sharper signal.
+    # Linearly interpolates from cuisine-only → favorites-only over 0–10 favs.
+    num_favs = len(fav_rec_nums)
+    t = min(num_favs, 10) / 10  # 0.0 at 0 favs → 1.0 at 10+ favs
+    sim_high = 0.58 + t * (0.73 - 0.58)  # 0.58 → 0.73
+    sim_mid = 0.50 + t * (0.65 - 0.50)   # 0.50 → 0.65
+    sim_low = 0.42 + t * (0.55 - 0.42)   # 0.42 → 0.55
     user_views = user_views or {}
     global_views = global_views or {}
     hall_interest = hall_interest or {}
@@ -181,6 +207,17 @@ def rank_items(
             score += 8
             signals.add('hall_interest')
 
+        # Preferred dining halls: explicit user preference boost
+        if preferred_halls and dining_hall_id in preferred_halls:
+            score += 50
+            signals.add('preferred_hall')
+
+        # --- Condiment/topping penalty ---
+        is_condiment = _is_condiment(food)
+        if is_condiment and rec_num not in fav_rec_nums:
+            score -= 40
+            signals.add('condiment')
+
         # --- Frequency signal (boost specials, penalize staples) ---
         frequency = entry.get('frequency', 1)
         meal = entry.get('meal_period', '')
@@ -192,8 +229,11 @@ def rank_items(
             score += 25
             signals.add('rotating_special')
         elif is_daily_staple and not is_fav and not is_breakfast:
-            score -= 15
+            score -= 35
             signals.add('daily_staple')
+        elif frequency >= 6 and not is_fav and not is_breakfast:
+            score -= 20
+            signals.add('frequent_item')
 
         # --- Nutrition & similarity signals (skip for sides and daily staples) ---
         if not is_side:
@@ -218,13 +258,13 @@ def rank_items(
                 item_embedding = food.get('embedding')
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
-                    if sim >= 0.73:
+                    if sim >= sim_high:
                         score += 55
                         signals.add('similar_to_favorites')
-                    elif sim >= 0.65:
+                    elif sim >= sim_mid:
                         score += 40
                         signals.add('similar_to_favorites')
-                    elif sim >= 0.55:
+                    elif sim >= sim_low:
                         score += 25
                         signals.add('somewhat_similar')
 

@@ -75,10 +75,12 @@ struct UserPreferencesData: Decodable, Sendable {
     let vegan: Bool
     let allergens: [String]
     let cuisinePrefs: [String]
+    let preferredDiningHalls: [String]
 
     enum CodingKeys: String, CodingKey {
         case vegetarian, vegan, allergens
         case cuisinePrefs = "cuisine_prefs"
+        case preferredDiningHalls = "preferred_dining_halls"
     }
 
     init(from decoder: Decoder) throws {
@@ -87,6 +89,7 @@ struct UserPreferencesData: Decodable, Sendable {
         vegan = try container.decode(Bool.self, forKey: .vegan)
         allergens = try container.decode([String].self, forKey: .allergens)
         cuisinePrefs = try container.decodeIfPresent([String].self, forKey: .cuisinePrefs) ?? []
+        preferredDiningHalls = try container.decodeIfPresent([String].self, forKey: .preferredDiningHalls) ?? []
     }
 }
 
@@ -165,6 +168,13 @@ actor DiningAPIService {
         let encoded = recNum.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? recNum
         let data = try await fetch("\(baseURL)/nutrition?rec_num=\(encoded)")
         let response = try JSONDecoder().decode(NutritionResponse.self, from: data)
+        return response.data
+    }
+
+    func fetchTrendingSearches() async throws -> [String] {
+        let data = try await fetch("\(baseURL)/trending-searches")
+        struct TrendingSearchesResponse: Decodable { let success: Bool; let data: [String] }
+        let response = try JSONDecoder().decode(TrendingSearchesResponse.self, from: data)
         return response.data
     }
 
@@ -271,7 +281,7 @@ actor DiningAPIService {
         return response.data
     }
 
-    func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String], cuisinePrefs: [String] = []) async throws {
+    func updatePreferences(userId: String, vegetarian: Bool, vegan: Bool, allergens: [String], cuisinePrefs: [String] = [], preferredDiningHalls: [String] = []) async throws {
         let token = await AuthManager.shared.jwtToken
         guard let url = URL(string: "\(baseURL)/preferences") else { throw APIError.invalidURL }
         var request = URLRequest(url: url, timeoutInterval: 10)
@@ -284,7 +294,8 @@ actor DiningAPIService {
             "vegetarian": vegetarian,
             "vegan": vegan,
             "allergens": allergens,
-            "cuisine_prefs": cuisinePrefs
+            "cuisine_prefs": cuisinePrefs,
+            "preferred_dining_halls": preferredDiningHalls
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (_, response) = try await URLSession.shared.data(for: request)

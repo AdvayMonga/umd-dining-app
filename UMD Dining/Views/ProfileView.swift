@@ -41,6 +41,23 @@ struct ProfileView: View {
                             selectablePill("Vegan", isOn: $preferences.vegan)
                             selectablePill("Halal", isOn: $preferences.halal)
 
+                            Text("Preferred Dining Halls")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+                                .padding(.top, 4)
+
+                            ForEach([("19", "Yahentamitsi"), ("51", "251 North"), ("16", "South Campus Diner")], id: \.0) { hallId, hallName in
+                                selectablePill(hallName, isOn: Binding(
+                                    get: { preferences.preferredDiningHalls.contains(hallId) },
+                                    set: { on in
+                                        if on { preferences.preferredDiningHalls.insert(hallId) }
+                                        else { preferences.preferredDiningHalls.remove(hallId) }
+                                    }
+                                ))
+                            }
+
                             Text("Allergens to Avoid")
                                 .font(.caption)
                                 .fontWeight(.semibold)

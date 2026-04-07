@@ -12,7 +12,7 @@ struct PalateSurveyView: View {
     var isOnboarding: Bool = true
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
-    @State private var showAllergens = false
+    @State private var showNextScreen = false
 
     private let cuisines: [CuisineOption] = [
         CuisineOption(id: "comfort", label: "American/Comfort", icon: "🍔", description: "Burgers, fries, mac & cheese"),
@@ -55,7 +55,7 @@ struct PalateSurveyView: View {
             Button {
                 UserPreferences.shared.cuisinePrefs = Array(selected)
                 if isOnboarding {
-                    showAllergens = true
+                    showNextScreen = true
                 } else {
                     onComplete()
                     dismiss()
@@ -77,8 +77,8 @@ struct PalateSurveyView: View {
         .onAppear {
             selected = Set(UserPreferences.shared.cuisinePrefs)
         }
-        .fullScreenCover(isPresented: $showAllergens) {
-            AllergenSurveyView {
+        .fullScreenCover(isPresented: $showNextScreen) {
+            DiningHallSurveyView {
                 onComplete()
                 dismiss()
             }

@@ -50,13 +50,7 @@ struct TrackerView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if entries.isEmpty {
-                    emptyState
-                } else {
-                    trackerContent
-                }
-            }
+            trackerContent
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Tracker")
             .navigationBarTitleDisplayMode(.inline)
@@ -157,21 +151,6 @@ struct TrackerView: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            dateSelector
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-            Spacer()
-            ContentUnavailableView(
-                "No Food Tracked",
-                systemImage: "fork.knife",
-                description: Text("Tap + on any food item to start tracking your daily intake.")
-            )
-            Spacer()
-        }
-    }
-
     // MARK: - Date Selector
 
     private var dateSelector: some View {
@@ -231,7 +210,7 @@ struct TrackerView: View {
                     innerRadius: .ratio(0.7),
                     angularInset: 2
                 )
-                .foregroundStyle(Color.gray.opacity(0.15))
+                .foregroundStyle(Color.umdRed.opacity(0.15))
                 .cornerRadius(4)
             }
             .frame(height: 220)
@@ -340,15 +319,25 @@ struct TrackerView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(entries.count)")
-                    .font(.system(size: 10, weight: .semibold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.umdRed.opacity(0.15))
-                    .foregroundStyle(Color.umdRed)
-                    .clipShape(Capsule())
+                if !entries.isEmpty {
+                    Text("\(entries.count)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.umdRed.opacity(0.15))
+                        .foregroundStyle(Color.umdRed)
+                        .clipShape(Capsule())
+                }
             }
             .padding(.horizontal, 4)
+
+            if entries.isEmpty {
+                Text("Tap + on any food to start tracking")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            }
 
             ForEach(entries) { entry in
                 NavigationLink(destination: NutritionDetailView(

@@ -29,19 +29,136 @@ struct SearchOverlay: View {
                     }
                     Spacer()
                 } else if viewModel.hasSearched && viewModel.results.isEmpty && viewModel.stationResults.isEmpty {
-                    Spacer()
-                    ContentUnavailableView.search(text: viewModel.query)
-                    Spacer()
-                } else if !viewModel.hasSearched && viewModel.stationResults.isEmpty {
-                    Spacer()
-                    VStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.largeTitle)
-                            .foregroundStyle(.secondary)
-                        Text("Search for foods and stations")
-                            .foregroundStyle(.secondary)
+                    // No results — show trending fallback
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            Spacer().frame(height: 40)
+                            Image(systemName: "magnifyingglass")
+                                .font(.largeTitle)
+                                .foregroundStyle(.secondary)
+                            Text("Nothing matches \"\(viewModel.query)\"")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            let trending = menuItems.filter { $0.tags.contains("Trending") }
+                                .prefix(5)
+                            if !trending.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Trending foods you might like")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
+
+                                    ForEach(Array(trending)) { item in
+                                        NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: hallNames[item.diningHallId] ?? "", source: "search")) {
+                                            HStack {
+                                                Text(item.name)
+                                                    .font(.body)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                                Text(item.station)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(.vertical, 12)
+                                            .padding(.horizontal, 16)
+                                            .background(Color(.systemBackground))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                            }
+                        }
                     }
-                    Spacer()
+                    .background(Color(.systemGroupedBackground))
+                } else if !viewModel.hasSearched && viewModel.stationResults.isEmpty {
+                    // Blank state — show recent searches or placeholder
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            if viewModel.recentSearches.isEmpty {
+                                Spacer().frame(height: 40)
+                                Image(systemName: "magnifyingglass")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.secondary)
+                                Text("Search for foods and stations")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Text("Recent Searches")
+                                            .font(.headline)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        Button {
+                                            viewModel.clearRecentSearches()
+                                        } label: {
+                                            Text("Clear All")
+                                                .font(.subheadline)
+                                                .foregroundStyle(Color.umdRed)
+                                        }
+                                    }
+                                    .padding(.horizontal, 4)
+
+                                    FlowLayout(spacing: 10) {
+                                        ForEach(viewModel.recentSearches, id: \.self) { recent in
+                                            Button {
+                                                viewModel.query = recent
+                                                viewModel.search(menuItems: menuItems, hallNames: hallNames)
+                                            } label: {
+                                                Text(recent)
+                                                    .font(.subheadline)
+                                                    .padding(.horizontal, 14)
+                                                    .padding(.vertical, 8)
+                                                    .background(Color(.systemBackground))
+                                                    .clipShape(Capsule())
+                                                    .overlay(Capsule().stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+
+                                // Trending searches
+                                if !viewModel.trendingSearches.isEmpty {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Trending Searches")
+                                            .font(.headline)
+                                            .foregroundStyle(.primary)
+                                            .padding(.horizontal, 4)
+
+                                        FlowLayout(spacing: 10) {
+                                            ForEach(viewModel.trendingSearches, id: \.self) { trending in
+                                                Button {
+                                                    viewModel.query = trending
+                                                    viewModel.search(menuItems: menuItems, hallNames: hallNames)
+                                                } label: {
+                                                    Text(trending)
+                                                        .font(.subheadline)
+                                                        .padding(.horizontal, 14)
+                                                        .padding(.vertical, 8)
+                                                        .background(Color(.systemBackground))
+                                                        .clipShape(Capsule())
+                                                        .overlay(Capsule().stroke(Color.umdRed.opacity(0.3), lineWidth: 1))
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 12)
+                                }
+                            }
+                        }
+                    }
+                    .background(Color(.systemGroupedBackground))
+                    .task {
+                        await viewModel.loadTrendingSearches()
+                    }
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
