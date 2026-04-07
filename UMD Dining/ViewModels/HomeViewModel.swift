@@ -83,7 +83,7 @@ class HomeViewModel {
             $0.mealPeriod == selectedMealPeriod && selectedHallIds.contains($0.diningHallId)
         }
 
-        // --- Build 20-item selected pool ---
+        // --- Build 20-item selected pool (prioritized) ---
         let foodFavs    = filtered.filter { loadedFavRecNums.contains($0.recNum) }
         let nonFoodFavs = filtered.filter { !loadedFavRecNums.contains($0.recNum) }
         let stationFavs = nonFoodFavs.filter { loadedFavStations.contains($0.station) }
@@ -91,19 +91,16 @@ class HomeViewModel {
         let scored      = rest.filter { $0.tag != nil }
         let unscored    = rest.filter { $0.tag == nil }
 
-        let slotsPerHall = max(4, 20 / max(1, selectedHallIds.count))
-        var hallCounts: [String: Int] = [:]
-        var picked: [MenuItem] = []
-        for item in scored {
-            guard picked.count < 20 else { break }
-            let count = hallCounts[item.diningHallId, default: 0]
-            if count < slotsPerHall {
-                picked.append(item)
-                hallCounts[item.diningHallId] = count + 1
+        // Fill 20 slots in priority order: favorites → station favs → scored → unscored
+        var selected: [MenuItem] = []
+        var seenRecs: Set<String> = []
+        for item in foodFavs + stationFavs + scored + unscored {
+            guard selected.count < 20 else { break }
+            if !seenRecs.contains(item.recNum) {
+                seenRecs.insert(item.recNum)
+                selected.append(item)
             }
         }
-        picked += unscored.prefix(max(0, 20 - picked.count))
-        let selected = foodFavs + stationFavs + picked
 
         // --- Build recommended groups (stations with items in selected) ---
         var recommendedGroups: [(station: String, hallId: String, items: [MenuItem])] = []

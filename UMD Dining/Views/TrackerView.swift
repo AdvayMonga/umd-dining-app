@@ -12,6 +12,7 @@ struct TrackerView: View {
     @State private var entries: [TrackedEntry] = []
     @State private var scrollProxy: ScrollViewProxy?
     @State private var hasAppeared = false
+    @Namespace private var namespace
 
     // Display values that drive chart animations (animate between these)
     @State private var displayCalorieValue: Int = 0
@@ -355,9 +356,12 @@ struct TrackerView: View {
                     foodName: entry.foodName,
                     diningHallName: entry.diningHall,
                     source: "tracker"
-                )) {
+                )
+                .navigationTransition(.zoom(sourceID: "tracker-\(entry.id)", in: namespace))
+                ) {
                     loggedItemRow(entry)
                 }
+                .matchedTransitionSource(id: "tracker-\(entry.id)", in: namespace)
                 .buttonStyle(.plain)
             }
 

@@ -208,24 +208,10 @@ struct ServingPickerSheet: View {
 
     private var scaledServingSize: String? {
         guard let size = servingSize else { return nil }
-        // Try to extract the numeric portion and unit, e.g. "4 oz" -> (4, "oz"), "120g" -> (120, "g")
-        let pattern = #"^([\d.]+)\s*(.*)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: size, range: NSRange(size.startIndex..., in: size)),
-              let numRange = Range(match.range(at: 1), in: size),
-              let num = Double(size[numRange]) else {
-            // Can't parse — just show "2x <original>"
-            if servingCount == 1.0 { return size }
-            let label = servingCount.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(servingCount))" : String(format: "%.1f", servingCount)
-            return "\(label)x \(size)"
-        }
-        let unitRange = Range(match.range(at: 2), in: size)
-        let unit = unitRange.map { String(size[$0]) } ?? ""
-        let scaled = num * servingCount
-        let formatted = scaled.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(scaled))" : String(format: "%.1f", scaled)
-        return "\(formatted) \(unit)".trimmingCharacters(in: .whitespaces)
+        if servingCount == 1.0 { return size }
+        let label = servingCount.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(servingCount))" : String(format: "%.1f", servingCount)
+        return "\(label) x \(size)"
     }
 
     private var previewCalories: Int {
@@ -279,6 +265,8 @@ struct ServingPickerSheet: View {
                          : String(format: "%.1f", servingCount))
                         .font(.system(size: 32, weight: .bold))
                         .foregroundStyle(Color.umdRed)
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.2), value: servingCount)
 
                     Text("servings")
                         .font(.caption)
@@ -299,6 +287,8 @@ struct ServingPickerSheet: View {
                     macroPill("\(previewCarbs)g C", color: .green)
                     macroPill("\(previewFat)g F", color: .orange)
                 }
+                .contentTransition(.numericText())
+                .animation(.easeInOut(duration: 0.2), value: servingCount)
 
                 // Buttons
                 HStack(spacing: 12) {

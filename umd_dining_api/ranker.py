@@ -261,28 +261,31 @@ def rank_items(
     rng.shuffle(untagged)
 
     # --- Diminishing returns on favorites ---
-    # Top 5 favorites keep full score, rest get reduced by 50
+    # Top 5 favorites keep full score, rest get penalized so other items surface
     fav_count = 0
     for i, (score, item) in enumerate(scored):
         if 'Favorite' in item.get('tags', []):
             fav_count += 1
             if fav_count > 5:
-                scored[i] = (score - 50, item)
+                scored[i] = (score - 70, item)
     scored.sort(key=lambda x: -x[0])  # re-sort after adjustment
 
-    # --- Deduplicate across halls ---
-    # Keep highest-scored instance of each rec_num
-    seen_rec_nums = set()
-    deduped_scored = []
-    for score, item in scored:
-        if item['rec_num'] not in seen_rec_nums:
-            seen_rec_nums.add(item['rec_num'])
-            deduped_scored.append((score, item))
+    # --- Deduplicate and ensure 20 per hall (globally ranked) ---
+    all_items = [(s, item) for s, item in scored] + [(0, item) for item in untagged]
+    hall_counts: dict[str, int] = {}
+    seen_rec_nums: set[str] = set()
+    result = []
+    for score, item in all_items:
+        rn = item['rec_num']
+        hall = item['dining_hall_id']
+        if rn in seen_rec_nums:
+            continue
+        if hall_counts.get(hall, 0) >= 20:
+            continue
+        seen_rec_nums.add(rn)
+        hall_counts[hall] = hall_counts.get(hall, 0) + 1
+        result.append((score, item))
 
-    deduped_untagged = []
-    for item in untagged:
-        if item['rec_num'] not in seen_rec_nums:
-            seen_rec_nums.add(item['rec_num'])
-            deduped_untagged.append(item)
-
-    return [item for _, item in deduped_scored] + deduped_untagged
+    # Sort globally by score so best items are first regardless of hall
+    result.sort(key=lambda x: -x[0])
+    return [item for _, item in result]

@@ -34,6 +34,9 @@ def _ensure_string(value, field_name='field'):
 # --- Trending cache (global, 5-min TTL) ---
 _trending_cache: dict = {'data': set(), 'expires': 0}
 
+# --- Guest response cache (5-min TTL) ---
+_guest_menu_cache: dict = {}  # {cache_key: {'data': response_dict, 'expires': float}}
+
 async def _get_trending():
     now = time.time()
     if now < _trending_cache['expires']:
@@ -163,18 +166,47 @@ class SearchQueryBody(BaseModel):
 
 @router.get('/')
 async def home():
-    return {
-        'message': 'UMD Dining API is running!',
-        'version': '3.0',
-        'endpoints': {
-            'dining_halls': '/api/dining-halls',
-            'available_dates': '/api/available-dates',
-            'menu': '/api/menu?date=...&dining_hall_id=...',
-            'nutrition': '/api/nutrition?rec_num=...',
-            'search': '/api/search?q=...',
-            'scrape': 'POST /api/scrape'
-        }
-    }
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse("""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UMD Dining</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,system-ui,sans-serif;background:#000;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.container{text-align:center;max-width:480px;padding:60px 24px}
+h1{font-size:36px;font-weight:700;color:#E21833;margin-bottom:6px;letter-spacing:-0.5px}
+.subtitle{font-size:14px;color:#E21833;opacity:0.7;text-transform:uppercase;letter-spacing:2px;margin-bottom:24px}
+.tagline{font-size:17px;color:#8e8e93;margin-bottom:40px;line-height:1.6}
+.features{text-align:left;margin:0 auto 40px;max-width:340px}
+.feature{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:8px;background:#1c1c1e;border-radius:12px;border:1px solid #2c2c2e}
+.feature-icon{font-size:20px;width:28px;text-align:center;flex-shrink:0}
+.feature-text{font-size:15px;color:#e5e5e7}
+.btn{display:inline-block;font-size:15px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;transition:opacity 0.2s}
+.btn:hover{opacity:0.85}
+.btn-primary{background:#E21833;color:#fff;margin-bottom:12px}
+.btn-secondary{background:transparent;color:#8e8e93;border:1px solid #3a3a3c;margin-bottom:12px}
+.links{margin-top:20px;font-size:13px;color:#48484a}
+.links a{color:#8e8e93;text-decoration:none}
+.links a:hover{color:#E21833}
+.divider{width:40px;height:2px;background:#E21833;margin:0 auto 24px;border-radius:1px}
+</style>
+</head><body>
+<div class="container">
+<h1>UMD Dining</h1>
+<p class="subtitle">University of Maryland</p>
+<div class="divider"></div>
+<p class="tagline">Personalized dining hall recommendations powered by AI. Find what you want to eat, track your nutrition, and never miss your favorites.</p>
+<div class="features">
+<div class="feature"><span class="feature-icon">🎯</span><span class="feature-text">AI-powered food recommendations</span></div>
+<div class="feature"><span class="feature-icon">🥗</span><span class="feature-text">Dietary filters &amp; allergen alerts</span></div>
+<div class="feature"><span class="feature-icon">📊</span><span class="feature-text">Nutrition tracking &amp; daily goals</span></div>
+<div class="feature"><span class="feature-icon">❤️</span><span class="feature-text">Save favorites across all dining halls</span></div>
+<div class="feature"><span class="feature-icon">🔍</span><span class="feature-text">Search any food with smart results</span></div>
+</div>
+<a href="https://forms.gle/53RrYDkmZjmf72Py9" target="_blank" class="btn btn-secondary">Send Feedback</a>
+<div class="links"><a href="/privacy">Privacy Policy</a></div>
+</div>
+</body></html>""")
 
 
 @router.get('/privacy')
@@ -204,26 +236,23 @@ async def privacy_policy():
 <li>Improve the app's recommendation algorithm</li>
 </ul>
 
-<h2>Data Storage &amp; Security</h2>
-<ul>
-<li>Data is stored on MongoDB Atlas (encrypted at rest and in transit)</li>
-<li>Authentication uses JSON Web Tokens (JWT)</li>
-<li>We do not sell or share your personal data with third parties</li>
-</ul>
+<h2>Data Security</h2>
+<p>Your data is encrypted in transit and at rest. We do not sell, share, or provide your personal data to third parties.</p>
 
 <h2>Account Deletion</h2>
-<p>You can delete your account at any time from the Profile tab. This permanently removes your identity and personal data. Anonymous usage data may be retained for improving the service.</p>
+<p>You can delete your account at any time from the Profile tab. This permanently removes your account and personal data. Anonymous usage data may be retained to improve the service.</p>
 
 <h2>Third-Party Services</h2>
 <ul>
-<li><strong>Apple Sign In</strong> — For authentication</li>
-<li><strong>University of Maryland Dining Services</strong> — Menu data source (nutrition.umd.edu)</li>
-<li><strong>OpenAI</strong> — For generating food similarity embeddings (no personal data is sent)</li>
-<li><strong>AWS</strong> — Cloud hosting infrastructure</li>
+<li><strong>Apple Sign In</strong> — For authentication only</li>
+<li><strong>University of Maryland Dining Services</strong> — Source of menu and nutrition data</li>
 </ul>
 
+<h2>Changes to This Policy</h2>
+<p>We may update this policy from time to time. Continued use of the app constitutes acceptance of any changes.</p>
+
 <h2>Contact</h2>
-<p>Questions about this policy? Contact <strong>advaymonga@gmail.com</strong></p>
+<p>Questions or concerns? <a href="https://forms.gle/53RrYDkmZjmf72Py9" style="color:#E21833">Send us feedback</a></p>
 </body></html>""")
 
 
@@ -255,6 +284,15 @@ async def get_ranked_menu(
 ):
     if not date:
         raise HTTPException(status_code=400, detail='date required')
+
+    # --- Guest response cache ---
+    is_guest = user_id is None
+    if is_guest:
+        cache_key = (date, tuple(sorted(dining_hall_ids)), vegetarian, vegan, high_protein, tuple(sorted(allergens)))
+        now = time.time()
+        cached = _guest_menu_cache.get(cache_key)
+        if cached and now < cached['expires']:
+            return cached['data']
 
     # --- Phase 1: Parallel async DB queries ---
     async def fetch_menus():
@@ -415,7 +453,17 @@ async def get_ranked_menu(
         hall_interest=hall_interest,
     )
 
-    return {'success': True, 'count': len(result), 'data': result}
+    response = {'success': True, 'count': len(result), 'data': result}
+
+    # Cache guest responses for 5 minutes
+    if is_guest:
+        _guest_menu_cache[cache_key] = {'data': response, 'expires': time.time() + 300}
+        if len(_guest_menu_cache) > 50:
+            stale = [k for k, v in _guest_menu_cache.items() if time.time() >= v['expires']]
+            for k in stale:
+                del _guest_menu_cache[k]
+
+    return response
 
 
 @router.get('/api/menu')

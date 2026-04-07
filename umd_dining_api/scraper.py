@@ -194,8 +194,12 @@ def scrape_dining_hall(location_num, date):
         print(f"  No changes for hall {location_num} on {date} — skipping")
         return items
 
-    # Remove old records for this hall+date, then insert fresh
-    db.menus.delete_many({"date": date, "dining_hall_id": location_num})
+    # Build all docs in memory first, then swap atomically to avoid
+    # a window where meal periods are missing mid-scrape.
+    from pymongo import UpdateOne, DeleteMany
+
+    menu_ops = [DeleteMany({"date": date, "dining_hall_id": location_num})]
+    food_ops = []
 
     for item in items:
         menu_doc = {
@@ -206,14 +210,12 @@ def scrape_dining_hall(location_num, date):
             "station": item["station"],
             "dietary_icons": item["dietary_icons"],
         }
-        db.menus.update_one(
+        menu_ops.append(UpdateOne(
             {"date": date, "dining_hall_id": location_num, "rec_num": item["rec_num"], "meal_period": item["meal_period"]},
             {"$set": menu_doc},
             upsert=True
-        )
-
-        # Add to foods collection if not already there
-        db.foods.update_one(
+        ))
+        food_ops.append(UpdateOne(
             {"rec_num": item["rec_num"]},
             {"$setOnInsert": {
                 "rec_num": item["rec_num"],
@@ -224,7 +226,13 @@ def scrape_dining_hall(location_num, date):
                 "nutrition_fetched": False
             }},
             upsert=True
-        )
+        ))
+
+    # Execute delete + inserts in a single bulk_write (ordered) so the
+    # gap between delete and insert is as small as possible.
+    db.menus.bulk_write(menu_ops, ordered=True)
+    if food_ops:
+        db.foods.bulk_write(food_ops, ordered=False)
 
     # Pre-fetch nutrition for items that don't have it yet
     for item in items:

@@ -35,7 +35,7 @@ struct SignInView: View {
                     Text("Sign in to save your preferences")
                         .font(.system(size: 18, weight: .light))
                         .foregroundStyle(.black)
-                        .padding(.top, 58)
+                        .padding(.top, 28)
                 }
 
                 Spacer()

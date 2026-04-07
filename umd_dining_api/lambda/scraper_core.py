@@ -221,15 +221,19 @@ def scrape_dining_hall(db, location_num, date):
     # If scrape returned nothing, don't touch existing data (UMD site may not be updated yet)
     if not items:
         print(f"  No items scraped for hall {location_num} on {date} — keeping existing data")
-        return []
+        return [], 0
 
     # Skip DB writes entirely if nothing changed
     if not _has_changes(db, date, location_num, items):
         print(f"  No changes for hall {location_num} on {date} — skipping")
-        return items
+        return items, 0
 
-    # Remove old records for this hall+date, then insert fresh
-    db.menus.delete_many({"date": date, "dining_hall_id": location_num})
+    # Build all ops in memory, then execute as a single bulk_write so there's
+    # no window where meal periods are missing mid-scrape.
+    from pymongo import UpdateOne, DeleteMany
+
+    menu_ops = [DeleteMany({"date": date, "dining_hall_id": location_num})]
+    food_ops = []
 
     for item in items:
         menu_doc = {
@@ -240,13 +244,12 @@ def scrape_dining_hall(db, location_num, date):
             "station": item["station"],
             "dietary_icons": item["dietary_icons"],
         }
-        db.menus.update_one(
+        menu_ops.append(UpdateOne(
             {"date": date, "dining_hall_id": location_num, "rec_num": item["rec_num"], "meal_period": item["meal_period"]},
             {"$set": menu_doc},
             upsert=True,
-        )
-
-        db.foods.update_one(
+        ))
+        food_ops.append(UpdateOne(
             {"rec_num": item["rec_num"]},
             {"$setOnInsert": {
                 "rec_num": item["rec_num"],
@@ -257,7 +260,14 @@ def scrape_dining_hall(db, location_num, date):
                 "nutrition_fetched": False,
             }},
             upsert=True,
-        )
+        ))
+
+    # Delete + inserts in one batch — minimizes the gap where data is missing
+    db.menus.bulk_write(menu_ops, ordered=True)
+    new_food_count = 0
+    if food_ops:
+        result = db.foods.bulk_write(food_ops, ordered=False)
+        new_food_count = result.upserted_count
 
     # Pre-fetch nutrition for items that don't have it yet
     for item in items:
@@ -269,7 +279,7 @@ def scrape_dining_hall(db, location_num, date):
             except Exception as e:
                 print(f"Failed to fetch nutrition for {item['name']}: {e}")
 
-    return items
+    return items, new_food_count
 
 
 def scrape_all_dining_halls(db):
@@ -290,17 +300,19 @@ def scrape_all_dining_halls(db):
     # Scrape today and day+6 — no blanket delete, each hall handles its own diff
     all_items = []
     failures = []
+    total_new_foods = 0
     for offset in [0, 6]:
         scrape_date = (today + timedelta(days=offset)).strftime('%-m/%-d/%Y')
         for location_num in DINING_HALLS:
             try:
-                items = scrape_dining_hall(db, location_num, scrape_date)
+                items, new_foods = scrape_dining_hall(db, location_num, scrape_date)
                 all_items.extend(items)
+                total_new_foods += new_foods
             except Exception as e:
                 failures.append(f"hall {location_num} on {scrape_date}: {e}")
                 print(f"Failed to scrape hall {location_num} for {scrape_date}: {e}")
 
-    return all_items, failures
+    return all_items, failures, total_new_foods
 
 
 def scrape_full_week(db):
@@ -312,7 +324,7 @@ def scrape_full_week(db):
         scrape_date = (today + timedelta(days=i)).strftime('%-m/%-d/%Y')
         for location_num in DINING_HALLS:
             try:
-                items = scrape_dining_hall(db, location_num, scrape_date)
+                items, _ = scrape_dining_hall(db, location_num, scrape_date)
                 all_items.extend(items)
             except Exception as e:
                 print(f"Failed to scrape hall {location_num} for {scrape_date}: {e}")

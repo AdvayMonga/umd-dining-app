@@ -15,6 +15,7 @@ struct ProfileView: View {
     @State private var foodsToShow = 10
     @State private var stationsToShow = 10
     @State private var scrollProxy: ScrollViewProxy?
+    @Namespace private var namespace
 
     private let allergenOptions = [
         ("Contains dairy", "Dairy"),
@@ -33,132 +34,109 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         Color.clear.frame(height: 0).id("profileTop")
-                        // --- Account ---
-                        sectionCard("Account") {
-                            contactCard
+                        // --- Food Preferences ---
+                        sectionCard("Food Preferences") {
+                            filterPill("Cuisine Preferences", subtitle: preferences.cuisinePrefs.isEmpty ? "Not set" : "\(preferences.cuisinePrefs.count) selected") {
+                                showCuisinePrefs = true
+                            }
+
+                            selectablePill("Vegetarian", isOn: $preferences.vegetarian)
+                            selectablePill("Vegan", isOn: $preferences.vegan)
+
+                            Text("Allergens to Avoid")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+                                .padding(.top, 4)
+
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                                ForEach(allergenOptions, id: \.0) { key, label in
+                                    selectablePill(label, isOn: Binding(
+                                        get: { preferences.allergens.contains(key) },
+                                        set: { on in
+                                            if on { preferences.allergens.insert(key) }
+                                            else { preferences.allergens.remove(key) }
+                                        }
+                                    ))
+                                }
+                            }
                         }
 
-                        if AuthManager.shared.isGuest {
-                            VStack(spacing: 8) {
-                                    SignInWithAppleButton(.signIn) { request in
-                                        request.requestedScopes = [.fullName]
-                                    } onCompletion: { result in
-                                        switch result {
-                                        case .success(let authorization):
-                                            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                                                isUpgrading = true
-                                                Task {
-                                                    await AuthManager.shared.upgradeToApple(credential: credential)
-                                                    isUpgrading = false
-                                                }
-                                            }
-                                        case .failure(let error):
-                                            upgradeError = "Sign in failed. Please try again."
-                                            print("Upgrade failed: \(error.localizedDescription)")
-                                        }
-                                    }
-                                    .signInWithAppleButtonStyle(isDarkMode ? .black : .white)
-                                    .frame(height: 44)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3), lineWidth: 1))
-                                    .disabled(isUpgrading)
-
-                                    Button {
-                                        showDeleteAlert = true
-                                    } label: {
-                                        Text("Delete Account")
+                        // --- Favorites ---
+                        sectionCard("Favorites") {
+                            if favorites.favoriteFoods.isEmpty {
+                                NavigationLink(destination: SearchOverlay()) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "magnifyingglass")
+                                            .foregroundStyle(.primary)
+                                        Text("Find Foods")
                                             .font(.subheadline)
                                             .fontWeight(.medium)
-                                            .foregroundStyle(.red)
-                                            .frame(maxWidth: .infinity)
-                                            .frame(height: 44)
-                                            .background(Color.red.opacity(0.12))
-                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.3), lineWidth: 1))
+                                            .foregroundStyle(.primary)
                                     }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(Color(.systemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                let sorted = favorites.favoriteFoods.sorted(by: { $0.value < $1.value })
+                                let visible = Array(sorted.prefix(foodsToShow))
+                                ForEach(visible, id: \.key) { recNum, name in
+                                    NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name, source: "profile_favorites")
+                                        .navigationTransition(.zoom(sourceID: "profile-\(recNum)", in: namespace))
+                                    ) {
+                                        HStack {
+                                            Text(name)
+                                                .font(.subheadline)
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                        .background(Color(.systemBackground))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                                    }
+                                    .matchedTransitionSource(id: "profile-\(recNum)", in: namespace)
                                     .buttonStyle(.plain)
                                 }
-                                .padding(.horizontal, 4)
-                        }
-
-                    // --- General ---
-                    sectionCard("General") {
-                        togglePill(
-                            label: isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
-                            icon: isDarkMode ? "sun.max.fill" : "moon.fill",
-                            action: { isDarkMode.toggle() }
-                        )
-                        togglePill(
-                            label: "Send Feedback",
-                            icon: "envelope",
-                            action: {
-                                if let url = URL(string: "https://forms.gle/53RrYDkmZjmf72Py9") {
-                                    UIApplication.shared.open(url)
-                                }
-                            }
-                        )
-                    }
-
-                    // --- Taste Preferences ---
-                    sectionCard("Taste Preferences") {
-                        filterPill("Cuisine Preferences", subtitle: preferences.cuisinePrefs.isEmpty ? "Not set" : "\(preferences.cuisinePrefs.count) selected") {
-                            showCuisinePrefs = true
-                        }
-                    }
-
-                    // --- Dietary Preferences ---
-                    sectionCard("Dietary Preferences") {
-                        selectablePill("Vegetarian", isOn: $preferences.vegetarian)
-                        selectablePill("Vegan", isOn: $preferences.vegan)
-                    }
-
-                    // --- Allergens ---
-                    sectionCard("Allergens to Avoid") {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                            ForEach(allergenOptions, id: \.0) { key, label in
-                                selectablePill(label, isOn: Binding(
-                                    get: { preferences.allergens.contains(key) },
-                                    set: { on in
-                                        if on { preferences.allergens.insert(key) }
-                                        else { preferences.allergens.remove(key) }
+                                if foodsToShow < sorted.count {
+                                    Button {
+                                        foodsToShow += 20
+                                    } label: {
+                                        Text("See More Foods")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(Color.umdRed)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 8)
                                     }
-                                ))
-                            }
-                        }
-                    }
-
-                    // --- Favorite Foods ---
-                    sectionCard("Favorite Foods") {
-                        if favorites.favoriteFoods.isEmpty {
-                            NavigationLink(destination: SearchOverlay()) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "magnifyingglass")
-                                        .foregroundStyle(.primary)
-                                    Text("Find Foods")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.primary)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                             }
-                            .buttonStyle(.plain)
-                        } else {
-                            let sorted = favorites.favoriteFoods.sorted(by: { $0.value < $1.value })
-                            let visible = Array(sorted.prefix(foodsToShow))
-                            ForEach(visible, id: \.key) { recNum, name in
-                                NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name, source: "profile_favorites")) {
+
+                            if !favorites.favoriteStations.isEmpty {
+                                Text("Stations")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+                                    .padding(.top, 4)
+
+                                let sorted = favorites.favoriteStations.sorted()
+                                let visible = Array(sorted.prefix(stationsToShow))
+                                ForEach(visible, id: \.self) { station in
                                     HStack {
-                                        Text(name)
+                                        Text(station)
                                             .font(.subheadline)
                                             .foregroundStyle(.primary)
                                         Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
                                     }
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 10)
@@ -166,74 +144,51 @@ struct ProfileView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                                 }
-                                .buttonStyle(.plain)
-                            }
-                            if foodsToShow < sorted.count {
-                                Button {
-                                    foodsToShow += 20
-                                } label: {
-                                    Text("See More")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(Color.umdRed)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 8)
+                                if stationsToShow < sorted.count {
+                                    Button {
+                                        stationsToShow += 20
+                                    } label: {
+                                        Text("See More Stations")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(Color.umdRed)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 8)
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // --- Favorite Stations ---
-                    sectionCard("Favorite Stations") {
-                        if favorites.favoriteStations.isEmpty {
-                            NavigationLink(destination: SearchOverlay()) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "magnifyingglass")
-                                        .foregroundStyle(.primary)
-                                    Text("Find Stations")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.primary)
+                        // --- General ---
+                        sectionCard("General") {
+                            contactCard
+
+                            togglePill(
+                                label: isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
+                                icon: isDarkMode ? "sun.max.fill" : "moon.fill",
+                                action: { isDarkMode.toggle() }
+                            )
+                            togglePill(
+                                label: "Send Feedback",
+                                icon: "envelope",
+                                action: {
+                                    if let url = URL(string: "https://forms.gle/53RrYDkmZjmf72Py9") {
+                                        UIApplication.shared.open(url)
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            let sorted = favorites.favoriteStations.sorted()
-                            let visible = Array(sorted.prefix(stationsToShow))
-                            ForEach(visible, id: \.self) { station in
-                                HStack {
-                                    Text(station)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    Spacer()
+                            )
+                            togglePill(
+                                label: "Privacy Policy",
+                                icon: "hand.raised",
+                                action: {
+                                    if let url = URL(string: "https://api.umddining.com/privacy") {
+                                        UIApplication.shared.open(url)
+                                    }
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                            }
-                            if stationsToShow < sorted.count {
-                                Button {
-                                    stationsToShow += 20
-                                } label: {
-                                    Text("See More")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(Color.umdRed)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 8)
-                                }
-                            }
+                            )
                         }
-                    }
 
-                    Spacer().frame(height: 40)
+                        Spacer().frame(height: 40)
                 }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
@@ -335,6 +290,46 @@ struct ProfileView: View {
                         }
                     }
                 }
+            }
+
+            if AuthManager.shared.isGuest {
+                SignInWithAppleButton(.signIn) { request in
+                    request.requestedScopes = [.fullName]
+                } onCompletion: { result in
+                    switch result {
+                    case .success(let authorization):
+                        if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                            isUpgrading = true
+                            Task {
+                                await AuthManager.shared.upgradeToApple(credential: credential)
+                                isUpgrading = false
+                            }
+                        }
+                    case .failure(let error):
+                        upgradeError = "Sign in failed. Please try again."
+                        print("Upgrade failed: \(error.localizedDescription)")
+                    }
+                }
+                .signInWithAppleButtonStyle(isDarkMode ? .black : .white)
+                .frame(height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(isDarkMode ? Color.white.opacity(0.3) : Color.black.opacity(0.3), lineWidth: 1))
+                .disabled(isUpgrading)
+
+                Button {
+                    showDeleteAlert = true
+                } label: {
+                    Text("Delete Account")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.red.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.3), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(16)
