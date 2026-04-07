@@ -270,20 +270,20 @@ def rank_items(
                 scored[i] = (score - 70, item)
     scored.sort(key=lambda x: -x[0])  # re-sort after adjustment
 
-    # --- Deduplicate and ensure 20 per hall (globally ranked) ---
+    # --- Deduplicate and ensure 20 per hall per meal period (globally ranked) ---
     all_items = [(s, item) for s, item in scored] + [(0, item) for item in untagged]
-    hall_counts: dict[str, int] = {}
+    hall_meal_counts: dict[str, int] = {}  # "hallId_mealPeriod" -> count
     seen_rec_nums: set[str] = set()
     result = []
     for score, item in all_items:
         rn = item['rec_num']
-        hall = item['dining_hall_id']
+        key = f"{item['dining_hall_id']}_{item['meal_period']}"
         if rn in seen_rec_nums:
             continue
-        if hall_counts.get(hall, 0) >= 20:
+        if hall_meal_counts.get(key, 0) >= 20:
             continue
         seen_rec_nums.add(rn)
-        hall_counts[hall] = hall_counts.get(hall, 0) + 1
+        hall_meal_counts[key] = hall_meal_counts.get(key, 0) + 1
         result.append((score, item))
 
     # Sort globally by score so best items are first regardless of hall
