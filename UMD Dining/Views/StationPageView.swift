@@ -12,6 +12,8 @@ struct StationPageView: View {
     @State private var allItems: [MenuItem] = []
     @State private var selectedDate: Date = .now
     @State private var selectedMealPeriod: String = "Lunch"
+    @State private var selectedItem: MenuItem?
+    @Namespace private var namespace
 
     private let mealPeriodOrder = ["Breakfast", "Brunch", "Lunch", "Dinner"]
 
@@ -83,10 +85,12 @@ struct StationPageView: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredItems) { item in
-                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: diningHallName, source: "station")) {
-                                FoodItemRow(item: item, diningHallName: diningHallName)
-                            }
-                            .buttonStyle(.plain)
+                            FoodItemRow(
+                                item: item,
+                                diningHallName: diningHallName,
+                                onTap: { selectedItem = item }
+                            )
+                            .matchedTransitionSource(id: item.recNum, in: namespace)
                         }
                     }
                     .padding(.horizontal, 12)
@@ -95,6 +99,10 @@ struct StationPageView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
+        .navigationDestination(item: $selectedItem) { item in
+            NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: diningHallName, source: "station")
+                .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
+        }
         .navigationTitle(station)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {

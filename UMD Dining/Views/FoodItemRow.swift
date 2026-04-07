@@ -4,6 +4,7 @@ import SwiftUI
 struct FoodItemRow: View {
     let item: MenuItem
     let diningHallName: String
+    var onTap: (() -> Void)? = nil
     @Environment(FavoritesManager.self) private var favorites
     @Environment(NutritionTrackerManager.self) private var tracker
     @Environment(\.modelContext) private var modelContext
@@ -12,6 +13,7 @@ struct FoodItemRow: View {
     @State private var showServingPicker = false
     @State private var servingCount: Double = 1.0
     @State private var pendingNutrition: [String: String]?
+    @State private var showHeartAnimation = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -97,6 +99,26 @@ struct FoodItemRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
         .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
+        .overlay {
+            if showHeartAnimation {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.red.opacity(0.85))
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            favorites.toggleFood(recNum: item.recNum, name: item.name)
+            withAnimation(.spring(duration: 0.35)) { showHeartAnimation = true }
+            Task {
+                try? await Task.sleep(for: .seconds(0.6))
+                withAnimation(.easeOut(duration: 0.25)) { showHeartAnimation = false }
+            }
+        }
+        .onTapGesture(count: 1) {
+            onTap?()
+        }
         .fullScreenCover(isPresented: $showServingPicker) {
             if let nutrition = pendingNutrition {
                 ServingPickerSheet(

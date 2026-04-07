@@ -1,6 +1,6 @@
 import Foundation
 
-struct MenuItem: Codable, Identifiable, Sendable {
+struct MenuItem: Codable, Identifiable, Hashable, Sendable {
     let name: String
     let recNum: String
     let diningHallId: String

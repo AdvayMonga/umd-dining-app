@@ -6,6 +6,7 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showSearch = false
     @State private var showFilter = false
+    @State private var selectedItem: MenuItem?
     @Namespace private var namespace
 
     var body: some View {
@@ -24,6 +25,10 @@ struct HomeView: View {
                     .animation(.easeInOut(duration: 0.25), value: viewModel.selectedMealPeriod)
                 }
                 .background(Color(.systemGroupedBackground))
+                .navigationDestination(item: $selectedItem) { item in
+                    NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")
+                        .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
+                }
                 .task {
                     viewModel.autoSelectMealPeriod()
                     await viewModel.loadMenus()
@@ -191,16 +196,12 @@ struct HomeView: View {
                             }
                             .buttonStyle(.plain)
                         case .menuItem(let item):
-                            NavigationLink(destination: NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")
-                                .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
-                            ) {
-                                FoodItemRow(
-                                    item: item,
-                                    diningHallName: viewModel.diningHallName(for: item.diningHallId)
-                                )
-                            }
+                            FoodItemRow(
+                                item: item,
+                                diningHallName: viewModel.diningHallName(for: item.diningHallId),
+                                onTap: { selectedItem = item }
+                            )
                             .matchedTransitionSource(id: item.recNum, in: namespace)
-                            .buttonStyle(.plain)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
