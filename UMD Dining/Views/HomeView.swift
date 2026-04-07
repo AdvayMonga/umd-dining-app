@@ -35,7 +35,7 @@ struct HomeView: View {
                 }
                 .background(Color(.systemGroupedBackground))
                 .navigationDestination(item: $selectedItem) { item in
-                    NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")
+                    NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home", tags: item.tags)
                         .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
                 }
                 .navigationDestination(item: $selectedStation) { data in
@@ -66,6 +66,7 @@ struct HomeView: View {
                     allHallIds: viewModel.allHallIds,
                     filterVegetarian: $viewModel.filterVegetarian,
                     filterVegan: $viewModel.filterVegan,
+                    filterHalal: $viewModel.filterHalal,
                     filterHighProtein: $viewModel.filterHighProtein,
                     filterAllergens: $viewModel.filterAllergens,
                     onDismiss: {

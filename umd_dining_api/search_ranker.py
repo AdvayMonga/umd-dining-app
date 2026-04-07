@@ -22,7 +22,7 @@ from embeddings import cosine_similarity
 def compute_text_score(food_name: str, food_ingredients: str, query: str) -> float:
     """
     Score how well a food matches the query via text.
-    Returns 0.0–1.0 (normalized).
+    Returns 0.0-1.0 (normalized).
 
     Scoring (raw, then normalized by /100):
       - Exact name match:          100

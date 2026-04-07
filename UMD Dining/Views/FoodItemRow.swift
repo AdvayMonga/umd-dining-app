@@ -18,24 +18,30 @@ struct FoodItemRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
+                if !item.tags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(item.tags, id: \.self) { tag in
+                            HStack(spacing: 3) {
+                                if let icon = tagIcon(for: tag) {
+                                    Image(systemName: icon)
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                Text(tagLabel(for: tag))
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(tagColor(for: tag).opacity(0.15))
+                            .foregroundStyle(tagColor(for: tag))
+                            .clipShape(Capsule())
+                        }
+                    }
+                }
+
                 Text(item.name)
                     .font(.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
-
-                if !item.tags.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(item.tags, id: \.self) { tag in
-                            Text(tag.replacingOccurrences(of: "Contains ", with: "").capitalized)
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(tagColor(for: tag).opacity(0.15))
-                                .foregroundStyle(tagColor(for: tag))
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
 
                 if !item.station.isEmpty || !diningHallName.isEmpty {
                     Text([item.station, diningHallName].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -181,18 +187,35 @@ struct FoodItemRow: View {
         showServingPicker = true
     }
 
+    private func tagLabel(for tag: String) -> String {
+        tag.replacingOccurrences(of: "HalalFriendly", with: "Halal Friendly")
+           .replacingOccurrences(of: "Contains ", with: "")
+           .capitalized
+    }
+
+    private func tagIcon(for tag: String) -> String? {
+        switch tag {
+        case "Favorite": return "heart.fill"
+        case "Recommended": return "star.fill"
+        case "Trending": return "flame.fill"
+        case "High Protein": return "dumbbell.fill"
+        default: return nil
+        }
+    }
+
     private func tagColor(for tag: String) -> Color {
         switch tag {
         case "Favorite":     return .pink
         case "Trending":     return .orange
         case "Recommended":  return .teal
-        case "High Protein": return .purple
+        case "High Protein": return .blue
         default:             return .gray
         }
     }
 
     private func shortLabel(for icon: String) -> String {
         switch icon {
+        case "HalalFriendly": return "Halal"
         case "vegan": return "V"
         case "vegetarian": return "VG"
         case "Contains dairy": return "Dairy"
@@ -210,7 +233,7 @@ struct FoodItemRow: View {
     private func color(for icon: String) -> Color {
         switch icon {
         case "vegan", "vegetarian": return .green
-        default: return .orange
+        default: return .gray
         }
     }
 }

@@ -138,6 +138,7 @@ actor DiningAPIService {
         userId: String?,
         vegetarian: Bool = false,
         vegan: Bool = false,
+        halal: Bool = false,
         highProtein: Bool = false,
         allergens: Set<String> = []
     ) async throws -> [MenuItem] {
@@ -148,6 +149,7 @@ actor DiningAPIService {
         }
         if vegetarian { urlString += "&vegetarian=true" }
         if vegan { urlString += "&vegan=true" }
+        if halal { urlString += "&halal=true" }
         if highProtein { urlString += "&high_protein=true" }
         for allergen in allergens {
             let encoded = allergen.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? allergen

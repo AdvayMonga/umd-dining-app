@@ -100,7 +100,7 @@ struct StationPageView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationDestination(item: $selectedItem) { item in
-            NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: diningHallName, source: "station")
+            NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: diningHallName, source: "station", tags: item.tags)
                 .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
         }
         .navigationTitle(station)

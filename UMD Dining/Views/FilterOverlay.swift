@@ -7,6 +7,7 @@ struct FilterOverlay: View {
 
     @Binding var filterVegetarian: Bool
     @Binding var filterVegan: Bool
+    @Binding var filterHalal: Bool
     @Binding var filterHighProtein: Bool
     @Binding var filterAllergens: Set<String>
 
@@ -64,6 +65,7 @@ struct FilterOverlay: View {
                     sectionCard("Dietary Preferences") {
                         selectablePill("Vegetarian", isOn: $filterVegetarian)
                         selectablePill("Vegan", isOn: $filterVegan)
+                        selectablePill("Halal", isOn: $filterHalal)
                         selectablePill("High Protein (15g+)", isOn: $filterHighProtein)
                     }
 
@@ -72,7 +74,7 @@ struct FilterOverlay: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                             ForEach(allergenOptions, id: \.self) { allergen in
                                 selectablePill(
-                                    allergen.replacingOccurrences(of: "Contains ", with: "").replacingOccurrences(of: "tree nuts", with: "Nuts"),
+                                    allergen.replacingOccurrences(of: "Contains ", with: "").replacingOccurrences(of: "tree nuts", with: "Nuts").capitalized,
                                     isOn: Binding(
                                         get: { filterAllergens.contains(allergen) },
                                         set: { isOn in
@@ -157,6 +159,7 @@ struct FilterOverlay: View {
         allHallIds: ["19", "51", "16"],
         filterVegetarian: .constant(false),
         filterVegan: .constant(false),
+        filterHalal: .constant(false),
         filterHighProtein: .constant(false),
         filterAllergens: .constant([])
     )

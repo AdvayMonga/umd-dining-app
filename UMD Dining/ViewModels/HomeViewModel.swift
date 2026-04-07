@@ -42,6 +42,7 @@ class HomeViewModel {
     // Temporary session-only filters — defaults loaded from profile prefs
     var filterVegetarian: Bool = false
     var filterVegan: Bool = false
+    var filterHalal: Bool = false
     var filterHighProtein: Bool = false
     var filterAllergens: Set<String> = []
 
@@ -51,10 +52,19 @@ class HomeViewModel {
     private var lastLoadedKey: String?
     private var hasLoadedPrefs = false
 
+    private var filtersMatchProfile: Bool {
+        let prefs = UserPreferences.shared
+        return filterVegetarian == prefs.vegetarian
+            && filterVegan == prefs.vegan
+            && filterHalal == prefs.halal
+            && filterAllergens == prefs.allergens
+            && !filterHighProtein
+    }
+
     private var currentCacheKey: String {
         let allergenStr = filterAllergens.sorted().joined(separator: ",")
         let cuisinePrefs = UserPreferences.shared.cuisinePrefs.sorted().joined(separator: ",")
-        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)"
+        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHalal)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)"
     }
 
     // Snapshot of favorites at load time — keeps feed order stable until refresh
@@ -227,6 +237,7 @@ class HomeViewModel {
             let prefs = UserPreferences.shared
             filterVegetarian = prefs.vegetarian
             filterVegan = prefs.vegan
+            filterHalal = prefs.halal
             filterAllergens = prefs.allergens
             hasLoadedPrefs = true
         }
@@ -243,11 +254,14 @@ class HomeViewModel {
                 userId: userId,
                 vegetarian: filterVegetarian,
                 vegan: filterVegan,
+                halal: filterHalal,
                 highProtein: filterHighProtein,
                 allergens: filterAllergens
             )
             lastLoadedKey = currentCacheKey
-            saveToDisk()
+            if filtersMatchProfile {
+                saveToDisk()
+            }
             if !availableMealPeriods.contains(selectedMealPeriod),
                let first = availableMealPeriods.first {
                 selectedMealPeriod = first
@@ -273,6 +287,7 @@ class HomeViewModel {
         let prefs = UserPreferences.shared
         filterVegetarian = prefs.vegetarian
         filterVegan = prefs.vegan
+        filterHalal = prefs.halal
         filterAllergens = prefs.allergens
 
         // Check if favorites changed since last load

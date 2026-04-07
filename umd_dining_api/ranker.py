@@ -181,7 +181,21 @@ def rank_items(
             score += 8
             signals.add('hall_interest')
 
-        # --- Nutrition & similarity signals (skip for sides) ---
+        # --- Frequency signal (boost specials, penalize staples) ---
+        frequency = entry.get('frequency', 1)
+        meal = entry.get('meal_period', '')
+        is_breakfast = meal in ('Breakfast', 'Brunch')
+        is_fav = rec_num in fav_rec_nums
+        is_daily_staple = frequency >= 8
+
+        if frequency <= 3:
+            score += 25
+            signals.add('rotating_special')
+        elif is_daily_staple and not is_fav and not is_breakfast:
+            score -= 15
+            signals.add('daily_staple')
+
+        # --- Nutrition & similarity signals (skip for sides and daily staples) ---
         if not is_side:
             protein = get_protein(nutrition)
             carbs = get_carbs(nutrition)
@@ -198,8 +212,9 @@ def rank_items(
                 score += 5
                 signals.add('protein_ratio')
 
-            # Tiered cosine similarity
-            if fav_centroid is not None:
+            # Skip similarity for daily staples and single-ingredient items
+            # (avoids recommending "orange sauce" because user likes "orange chicken")
+            if fav_centroid is not None and not is_daily_staple and not _is_single_ingredient(food):
                 item_embedding = food.get('embedding')
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
@@ -212,19 +227,6 @@ def rank_items(
                     elif sim >= 0.55:
                         score += 25
                         signals.add('somewhat_similar')
-
-        # --- Frequency signal (boost specials, penalize staples) ---
-        frequency = entry.get('frequency', 1)
-        meal = entry.get('meal_period', '')
-        is_breakfast = meal in ('Breakfast', 'Brunch')
-        is_fav = rec_num in fav_rec_nums
-
-        if frequency <= 3:
-            score += 25
-            signals.add('rotating_special')
-        elif frequency >= 8 and not is_fav and not is_breakfast:
-            score -= 15
-            signals.add('daily_staple')
 
         # --- Filters ---
 

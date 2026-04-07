@@ -279,6 +279,7 @@ async def get_ranked_menu(
     user_id: Optional[str] = Depends(get_optional_user),
     vegetarian: bool = Query(default=False),
     vegan: bool = Query(default=False),
+    halal: bool = Query(default=False),
     high_protein: bool = Query(default=False),
     allergens: list[str] = Query(default=[]),
 ):
@@ -288,7 +289,7 @@ async def get_ranked_menu(
     # --- Guest response cache ---
     is_guest = user_id is None
     if is_guest:
-        cache_key = (date, tuple(sorted(dining_hall_ids)), vegetarian, vegan, high_protein, tuple(sorted(allergens)))
+        cache_key = (date, tuple(sorted(dining_hall_ids)), vegetarian, vegan, halal, high_protein, tuple(sorted(allergens)))
         now = time.time()
         cached = _guest_menu_cache.get(cache_key)
         if cached and now < cached['expires']:
@@ -382,7 +383,7 @@ async def get_ranked_menu(
     foods = {f['rec_num']: f for f in food_docs}
 
     # --- Phase 2.5: Apply dietary filters before ranking ---
-    has_filters = vegetarian or vegan or high_protein or allergens
+    has_filters = vegetarian or vegan or halal or high_protein or allergens
     if has_filters:
         filtered_entries = []
         for entry in menu_entries:
@@ -390,6 +391,8 @@ async def get_ranked_menu(
             if vegan and 'vegan' not in icons:
                 continue
             if vegetarian and 'vegetarian' not in icons:
+                continue
+            if halal and 'HalalFriendly' not in icons:
                 continue
             if allergens and any(a in icons for a in allergens):
                 continue

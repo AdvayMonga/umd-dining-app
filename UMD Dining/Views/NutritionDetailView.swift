@@ -7,6 +7,7 @@ struct NutritionDetailView: View {
     var station: String? = nil
     var diningHallName: String? = nil
     var source: String = "unknown"
+    var tags: [String] = []
     @State private var viewModel = NutritionViewModel()
     @Environment(FavoritesManager.self) private var favorites
     @Environment(NutritionTrackerManager.self) private var tracker
@@ -122,6 +123,27 @@ struct NutritionDetailView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal)
+
+                if !tags.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(tags, id: \.self) { tag in
+                            HStack(spacing: 3) {
+                                if let icon = tagIcon(for: tag) {
+                                    Image(systemName: icon)
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                Text(tagLabel(for: tag))
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(tagColor(for: tag).opacity(0.15))
+                            .foregroundStyle(tagColor(for: tag))
+                            .clipShape(Capsule())
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
 
                 // Hero card — serving info left, calories right
                 let servingSize = nutritionValue("Serving Size", from: info.nutrition)
@@ -417,6 +439,32 @@ struct NutritionDetailView: View {
             .padding(.horizontal)
             .padding(.vertical, 6)
             Divider().padding(.horizontal)
+        }
+    }
+
+    private func tagLabel(for tag: String) -> String {
+        tag.replacingOccurrences(of: "HalalFriendly", with: "Halal Friendly")
+           .replacingOccurrences(of: "Contains ", with: "")
+           .capitalized
+    }
+
+    private func tagIcon(for tag: String) -> String? {
+        switch tag {
+        case "Favorite": return "heart.fill"
+        case "Recommended": return "star.fill"
+        case "Trending": return "flame.fill"
+        case "High Protein": return "dumbbell.fill"
+        default: return nil
+        }
+    }
+
+    private func tagColor(for tag: String) -> Color {
+        switch tag {
+        case "Favorite":     return .pink
+        case "Trending":     return .orange
+        case "Recommended":  return .teal
+        case "High Protein": return .blue
+        default:             return .gray
         }
     }
 

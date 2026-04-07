@@ -11,6 +11,9 @@ class UserPreferences {
     var vegan: Bool {
         didSet { saveLocally(); syncToServer() }
     }
+    var halal: Bool {
+        didSet { saveLocally(); syncToServer() }
+    }
     var allergens: Set<String> {
         didSet { saveLocally(); syncToServer() }
     }
@@ -20,12 +23,14 @@ class UserPreferences {
 
     private let vegetarianKey = "pref_vegetarian"
     private let veganKey = "pref_vegan"
+    private let halalKey = "pref_halal"
     private let allergensKey = "pref_allergens"
     private let cuisinePrefsKey = "pref_cuisine_prefs"
 
     init() {
         self.vegetarian = UserDefaults.standard.bool(forKey: "pref_vegetarian")
         self.vegan = UserDefaults.standard.bool(forKey: "pref_vegan")
+        self.halal = UserDefaults.standard.bool(forKey: "pref_halal")
         let stored = UserDefaults.standard.stringArray(forKey: "pref_allergens") ?? []
         self.allergens = Set(stored)
         self.cuisinePrefs = UserDefaults.standard.stringArray(forKey: "pref_cuisine_prefs") ?? []
@@ -36,6 +41,9 @@ class UserPreferences {
             return true
         }
         if vegetarian && !item.dietaryIcons.contains("vegetarian") {
+            return true
+        }
+        if halal && !item.dietaryIcons.contains("HalalFriendly") {
             return true
         }
         for allergen in allergens {
@@ -63,10 +71,12 @@ class UserPreferences {
     func clearAll() {
         vegetarian = false
         vegan = false
+        halal = false
         allergens = []
         cuisinePrefs = []
         UserDefaults.standard.removeObject(forKey: vegetarianKey)
         UserDefaults.standard.removeObject(forKey: veganKey)
+        UserDefaults.standard.removeObject(forKey: halalKey)
         UserDefaults.standard.removeObject(forKey: allergensKey)
         UserDefaults.standard.removeObject(forKey: cuisinePrefsKey)
     }
@@ -74,6 +84,7 @@ class UserPreferences {
     private func saveLocally() {
         UserDefaults.standard.set(vegetarian, forKey: vegetarianKey)
         UserDefaults.standard.set(vegan, forKey: veganKey)
+        UserDefaults.standard.set(halal, forKey: halalKey)
         UserDefaults.standard.set(Array(allergens), forKey: allergensKey)
         UserDefaults.standard.set(cuisinePrefs, forKey: cuisinePrefsKey)
     }

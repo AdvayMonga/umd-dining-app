@@ -39,6 +39,7 @@ struct ProfileView: View {
 
                             selectablePill("Vegetarian", isOn: $preferences.vegetarian)
                             selectablePill("Vegan", isOn: $preferences.vegan)
+                            selectablePill("Halal", isOn: $preferences.halal)
 
                             Text("Allergens to Avoid")
                                 .font(.caption)

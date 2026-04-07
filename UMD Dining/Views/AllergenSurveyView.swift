@@ -9,6 +9,9 @@ struct AllergenSurveyView: View {
     var onComplete: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Set<String> = []
+    @State private var isVegetarian = false
+    @State private var isVegan = false
+    @State private var isHalal = false
 
     private let allergens: [AllergenOption] = [
         AllergenOption(id: "Contains dairy", label: "Dairy"),
@@ -25,12 +28,12 @@ struct AllergenSurveyView: View {
         VStack(spacing: 0) {
             Spacer().frame(height: 60)
 
-            Text("Any allergies?")
+            Text("Dietary Preferences")
                 .font(.title)
                 .fontWeight(.bold)
                 .foregroundStyle(Color.umdRed)
 
-            Text("We'll hide foods containing these from your feed")
+            Text("We'll personalize your feed based on these")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
@@ -38,18 +41,39 @@ struct AllergenSurveyView: View {
             Spacer().frame(height: 24)
 
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    ForEach(allergens) { allergen in
-                        allergenCard(allergen)
+                VStack(spacing: 16) {
+                    // Dietary options
+                    HStack(spacing: 12) {
+                        dietaryCard("Vegetarian", isOn: $isVegetarian)
+                        dietaryCard("Vegan", isOn: $isVegan)
+                        dietaryCard("Halal", isOn: $isHalal)
                     }
+                    .padding(.horizontal)
+
+                    Text("Allergens to Avoid")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 4)
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        ForEach(allergens) { allergen in
+                            allergenCard(allergen)
+                        }
+                    }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
             }
 
             Spacer()
 
             VStack(spacing: 12) {
                 Button {
+                    UserPreferences.shared.vegetarian = isVegetarian
+                    UserPreferences.shared.vegan = isVegan
+                    UserPreferences.shared.halal = isHalal
                     UserPreferences.shared.allergens = selected
                     onComplete()
                     dismiss()
@@ -79,7 +103,30 @@ struct AllergenSurveyView: View {
         .background(Color(.systemGroupedBackground))
         .onAppear {
             selected = UserPreferences.shared.allergens
+            isVegetarian = UserPreferences.shared.vegetarian
+            isVegan = UserPreferences.shared.vegan
+            isHalal = UserPreferences.shared.halal
         }
+    }
+
+    private func dietaryCard(_ label: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Text(label)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(isOn.wrappedValue ? Color.umdRed.opacity(0.12) : Color(.systemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(isOn.wrappedValue ? Color.umdRed : Color(.systemGray4), lineWidth: isOn.wrappedValue ? 2 : 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     private func allergenCard(_ allergen: AllergenOption) -> some View {
