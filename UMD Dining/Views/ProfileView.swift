@@ -12,10 +12,7 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
     @State private var showCuisinePrefs = false
-    @State private var foodsToShow = 10
-    @State private var stationsToShow = 10
     @State private var scrollProxy: ScrollViewProxy?
-    @Namespace private var namespace
 
     private let allergenOptions = [
         ("Contains dairy", "Dairy"),
@@ -64,100 +61,23 @@ struct ProfileView: View {
                         }
 
                         // --- Favorites ---
-                        sectionCard("Favorites") {
-                            if favorites.favoriteFoods.isEmpty {
-                                NavigationLink(destination: SearchOverlay()) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "magnifyingglass")
-                                            .foregroundStyle(.primary)
-                                        Text("Find Foods")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(.primary)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
-                                    .background(Color(.systemBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                            } else {
-                                let sorted = favorites.favoriteFoods.sorted(by: { $0.value < $1.value })
-                                let visible = Array(sorted.prefix(foodsToShow))
-                                ForEach(visible, id: \.key) { recNum, name in
-                                    NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name, source: "profile_favorites")
-                                        .navigationTransition(.zoom(sourceID: "profile-\(recNum)", in: namespace))
-                                    ) {
-                                        HStack {
-                                            Text(name)
-                                                .font(.subheadline)
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 10)
-                                        .background(Color(.systemBackground))
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                                    }
-                                    .matchedTransitionSource(id: "profile-\(recNum)", in: namespace)
-                                    .buttonStyle(.plain)
-                                }
-                                if foodsToShow < sorted.count {
-                                    Button {
-                                        foodsToShow += 20
-                                    } label: {
-                                        Text("See More Foods")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(Color.umdRed)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 8)
-                                    }
-                                }
+                        NavigationLink(destination: FavoritesView()) {
+                            HStack {
+                                Text("Favorites")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: "heart")
+                                    .foregroundStyle(.primary)
                             }
-
-                            if !favorites.favoriteStations.isEmpty {
-                                Text("Stations")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 4)
-                                    .padding(.top, 4)
-
-                                let sorted = favorites.favoriteStations.sorted()
-                                let visible = Array(sorted.prefix(stationsToShow))
-                                ForEach(visible, id: \.self) { station in
-                                    HStack {
-                                        Text(station)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background(Color(.systemBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                                }
-                                if stationsToShow < sorted.count {
-                                    Button {
-                                        stationsToShow += 20
-                                    } label: {
-                                        Text("See More Stations")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(Color.umdRed)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 8)
-                                    }
-                                }
-                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
                         }
+                        .buttonStyle(.plain)
 
                         // --- General ---
                         sectionCard("General") {

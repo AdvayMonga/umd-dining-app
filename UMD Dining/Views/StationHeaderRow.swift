@@ -9,39 +9,26 @@ struct StationHeaderRow: View {
     let selectedMealPeriod: String
     var namespace: Namespace.ID
     @Environment(FavoritesManager.self) private var favorites
+    var onTap: (() -> Void)? = nil
+    @State private var showHeartAnimation = false
 
     private var stationId: String { "\(station)-\(diningHallId)" }
 
     var body: some View {
         HStack(spacing: 0) {
-            // Station name → navigates to StationPageView
-            NavigationLink {
-                StationPageView(
-                    station: station,
-                    diningHallId: diningHallId,
-                    diningHallName: diningHallName,
-                    initialItems: items,
-                    initialDate: selectedDate,
-                    initialMealPeriod: selectedMealPeriod
-                )
-                .navigationTransition(.zoom(sourceID: stationId, in: namespace))
-            } label: {
-                HStack(spacing: 6) {
-                    Text(station)
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .foregroundStyle(Color.umdRed)
-                    Text("·")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.umdRed.opacity(0.5))
-                    Text(diningHallName)
-                        .font(.subheadline)
-                        .foregroundStyle(Color.umdRed.opacity(0.75))
-                    Spacer()
-                }
-                .contentShape(Rectangle())
+            HStack(spacing: 6) {
+                Text(station)
+                    .font(.subheadline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(Color.umdRed)
+                Text("·")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.umdRed.opacity(0.5))
+                Text(diningHallName)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.umdRed.opacity(0.75))
+                Spacer()
             }
-            .buttonStyle(.plain)
 
             // Right: heart button
             Button {
@@ -60,6 +47,26 @@ struct StationHeaderRow: View {
         .background(Color.umdRed.opacity(0.20))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.3), lineWidth: 1))
+        .overlay {
+            if showHeartAnimation {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(Color.umdRed.opacity(0.85))
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            favorites.toggleStation(name: station)
+            withAnimation(.spring(duration: 0.35)) { showHeartAnimation = true }
+            Task {
+                try? await Task.sleep(for: .seconds(0.6))
+                withAnimation(.easeOut(duration: 0.25)) { showHeartAnimation = false }
+            }
+        }
+        .onTapGesture(count: 1) {
+            onTap?()
+        }
         .matchedTransitionSource(id: stationId, in: namespace)
     }
 }

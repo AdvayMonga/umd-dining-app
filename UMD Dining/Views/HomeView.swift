@@ -1,12 +1,21 @@
 import SwiftData
 import SwiftUI
 
+private struct StationNavData: Hashable {
+    let station: String
+    let diningHallId: String
+    let diningHallName: String
+    let selectedDate: Date
+    let selectedMealPeriod: String
+}
+
 struct HomeView: View {
     @Binding var tabResetID: UUID
     @State private var viewModel = HomeViewModel()
     @State private var showSearch = false
     @State private var showFilter = false
     @State private var selectedItem: MenuItem?
+    @State private var selectedStation: StationNavData?
     @Namespace private var namespace
 
     var body: some View {
@@ -28,6 +37,17 @@ struct HomeView: View {
                 .navigationDestination(item: $selectedItem) { item in
                     NutritionDetailView(recNum: item.recNum, foodName: item.name, station: item.station, diningHallName: viewModel.diningHallName(for: item.diningHallId), source: "home")
                         .navigationTransition(.zoom(sourceID: item.recNum, in: namespace))
+                }
+                .navigationDestination(item: $selectedStation) { data in
+                    StationPageView(
+                        station: data.station,
+                        diningHallId: data.diningHallId,
+                        diningHallName: data.diningHallName,
+                        initialItems: viewModel.itemsForStation(station: data.station, hallId: data.diningHallId),
+                        initialDate: data.selectedDate,
+                        initialMealPeriod: data.selectedMealPeriod
+                    )
+                    .navigationTransition(.zoom(sourceID: "\(data.station)-\(data.diningHallId)", in: namespace))
                 }
                 .task {
                     viewModel.autoSelectMealPeriod()
@@ -175,7 +195,16 @@ struct HomeView: View {
                                 items: viewModel.itemsForStation(station: station, hallId: hallId),
                                 selectedDate: viewModel.selectedDate,
                                 selectedMealPeriod: viewModel.selectedMealPeriod,
-                                namespace: namespace
+                                namespace: namespace,
+                                onTap: {
+                                    selectedStation = StationNavData(
+                                        station: station,
+                                        diningHallId: hallId,
+                                        diningHallName: viewModel.diningHallName(for: hallId),
+                                        selectedDate: viewModel.selectedDate,
+                                        selectedMealPeriod: viewModel.selectedMealPeriod
+                                    )
+                                }
                             )
                         case .seeMore:
                             Button {
