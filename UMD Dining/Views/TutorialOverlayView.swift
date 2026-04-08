@@ -8,7 +8,7 @@ struct TutorialOverlayView: View {
     var body: some View {
         ZStack {
             // Dark scrim
-            Color.black.opacity(0.7)
+            Color.black.opacity(0.85)
                 .ignoresSafeArea()
 
             if step == 0 {

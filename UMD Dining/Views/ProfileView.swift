@@ -38,20 +38,20 @@ struct ProfileView: View {
 
                         // 2. Announcement
                         if let announcement {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(announcement.title)
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "megaphone")
                                     .font(.subheadline)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(Color.umdRed)
+                                    .foregroundStyle(.primary)
                                 Text(announcement.message)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .background(Color.umdRed.opacity(0.08))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(Color(.systemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.2), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
                         }
 
                         // 3. Feedback

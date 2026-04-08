@@ -157,6 +157,7 @@ class AuthManager {
         // Clear all local caches and preferences
         UserDefaults.standard.removeObject(forKey: "cached_feed_data")
         UserDefaults.standard.removeObject(forKey: "cached_feed_key")
+        UserDefaults.standard.removeObject(forKey: "recentSearches")
         UserPreferences.shared.clearAll()
     }
 

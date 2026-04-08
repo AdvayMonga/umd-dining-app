@@ -25,6 +25,7 @@ struct NutritionDetailView: View {
 
     @State private var showAllNutrition = false
     @State private var showSimilarFoods = false
+    @State private var selectedSimilarItem: MenuItem?
     @Namespace private var namespace
 
     var body: some View {
@@ -82,6 +83,17 @@ struct NutritionDetailView: View {
         .task {
             let dateForSimilar: String? = (station == nil) ? todayDateString() : nil
             await viewModel.loadSimilarFoods(recNum: recNum, date: dateForSimilar)
+        }
+        .navigationDestination(item: $selectedSimilarItem) { item in
+            let hallName = Self.hallNames[item.diningHallId] ?? ""
+            NutritionDetailView(
+                recNum: item.recNum,
+                foodName: item.name,
+                station: item.station.isEmpty ? nil : item.station,
+                diningHallName: hallName.isEmpty ? nil : hallName,
+                source: "similar"
+            )
+            .navigationTransition(.zoom(sourceID: "similar-\(item.recNum)", in: namespace))
         }
         .fullScreenCover(isPresented: $showServingPicker) {
             if let info = viewModel.nutritionInfo {
@@ -332,21 +344,12 @@ struct NutritionDetailView: View {
                 VStack(spacing: 8) {
                     ForEach(Array(foods.enumerated()), id: \.element.id) { index, item in
                         let hallName = Self.hallNames[item.diningHallId] ?? ""
-                        NavigationLink(destination: NutritionDetailView(
-                            recNum: item.recNum,
-                            foodName: item.name,
-                            station: item.station.isEmpty ? nil : item.station,
-                            diningHallName: hallName.isEmpty ? nil : hallName,
-                            source: "similar"
-                        )
-                        .navigationTransition(.zoom(sourceID: "similar-\(item.recNum)", in: namespace))
-                        ) {
-                            FoodItemRow(item: item, diningHallName: hallName)
-                        }
-                        .matchedTransitionSource(id: "similar-\(item.recNum)", in: namespace)
-                        .buttonStyle(.plain)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                        .animation(.easeOut(duration: 0.25).delay(Double(index) * 0.05), value: showSimilarFoods)
+                        FoodItemRow(item: item, diningHallName: hallName, onTap: {
+                            selectedSimilarItem = item
+                        })
+                            .matchedTransitionSource(id: "similar-\(item.recNum)", in: namespace)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            .animation(.easeOut(duration: 0.25).delay(Double(index) * 0.05), value: showSimilarFoods)
                     }
                 }
                 .padding(.horizontal)
