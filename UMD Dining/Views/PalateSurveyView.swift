@@ -27,7 +27,7 @@ struct PalateSurveyView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer().frame(height: 60)
+            Spacer().frame(height: 24)
 
             Text("What do you like to eat?")
                 .font(.title)
@@ -39,7 +39,7 @@ struct PalateSurveyView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
 
-            Spacer().frame(height: 24)
+            Spacer().frame(height: 16)
 
             ScrollView {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -52,26 +52,49 @@ struct PalateSurveyView: View {
 
             Spacer()
 
-            Button {
-                UserPreferences.shared.cuisinePrefs = Array(selected)
-                if isOnboarding {
-                    showNextScreen = true
-                } else {
-                    onComplete()
-                    dismiss()
+            VStack(spacing: 12) {
+                Button {
+                    UserPreferences.shared.cuisinePrefs = Array(selected)
+                    if isOnboarding {
+                        showNextScreen = true
+                    } else {
+                        onComplete()
+                        dismiss()
+                    }
+                } label: {
+                    Text("Continue")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(selected.isEmpty ? Color.gray : Color.umdRed)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-            } label: {
-                Text("Continue")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(selected.isEmpty ? Color.gray : Color.umdRed)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                .disabled(selected.isEmpty)
+                .animation(.easeInOut(duration: 0.25), value: selected.isEmpty)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        selected.removeAll()
+                    }
+                } label: {
+                    Text("Clear All")
+                        .font(.headline)
+                        .foregroundStyle(selected.isEmpty ? Color.gray.opacity(0.4) : Color.umdRed)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(selected.isEmpty ? Color.gray.opacity(0.2) : Color.umdRed.opacity(0.5), lineWidth: 1.5)
+                        )
+                }
+                .disabled(selected.isEmpty)
+                .animation(.easeInOut(duration: 0.25), value: selected.isEmpty)
             }
-            .disabled(selected.isEmpty)
             .padding(.horizontal, 24)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
         }
         .background(Color(.systemGroupedBackground))
         .onAppear {

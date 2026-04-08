@@ -371,6 +371,16 @@ struct ServingPickerSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    // Macro preview
+                    HStack(spacing: 8) {
+                        macroPill("\(previewCalories) Calories", color: Color.umdRed)
+                        macroPill("\(previewProtein)g Protein", color: .blue)
+                        macroPill("\(previewCarbs)g Carbs", color: .green)
+                        macroPill("\(previewFat)g Fat", color: .orange)
+                    }
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.2), value: servingCount)
+
                     Slider(
                         value: $servingCount,
                         in: 0.5...10.0,
@@ -378,16 +388,6 @@ struct ServingPickerSheet: View {
                     )
                     .tint(Color.umdRed)
                 }
-
-                // Macro preview
-                HStack(spacing: 6) {
-                    macroPill("\(previewCalories) cal", color: Color.umdRed)
-                    macroPill("\(previewProtein)g P", color: .blue)
-                    macroPill("\(previewCarbs)g C", color: .green)
-                    macroPill("\(previewFat)g F", color: .orange)
-                }
-                .contentTransition(.numericText())
-                .animation(.easeInOut(duration: 0.2), value: servingCount)
 
                 // Buttons
                 HStack(spacing: 12) {
@@ -428,9 +428,9 @@ struct ServingPickerSheet: View {
 
     private func macroPill(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .font(.system(size: 13, weight: .semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(Capsule())

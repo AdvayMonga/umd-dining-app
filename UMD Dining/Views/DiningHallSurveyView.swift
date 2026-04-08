@@ -15,7 +15,7 @@ struct DiningHallSurveyView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer().frame(height: 60)
+            Spacer().frame(height: 24)
 
             Text("Which dining halls do you go to most?")
                 .font(.title2)
@@ -29,7 +29,7 @@ struct DiningHallSurveyView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
 
-            Spacer().frame(height: 24)
+            Spacer().frame(height: 16)
 
             VStack(spacing: 12) {
                 ForEach(halls, id: \.id) { hall in
@@ -45,27 +45,39 @@ struct DiningHallSurveyView: View {
                     UserPreferences.shared.preferredDiningHalls = selected
                     if isOnboarding { showAllergens = true } else { onComplete(); dismiss() }
                 } label: {
-                    Text("Continue")
+                    Text(selected.isEmpty ? "No Preference" : "Continue")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(selected.isEmpty ? Color.gray : Color.umdRed)
+                        .background(Color.umdRed)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .contentTransition(.interpolate)
                 }
-                .disabled(selected.isEmpty)
+                .animation(.easeInOut(duration: 0.25), value: selected.isEmpty)
 
                 Button {
-                    UserPreferences.shared.preferredDiningHalls = []
-                    if isOnboarding { showAllergens = true } else { onComplete(); dismiss() }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        selected.removeAll()
+                    }
                 } label: {
-                    Text("No Preference")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Text("Clear All")
+                        .font(.headline)
+                        .foregroundStyle(selected.isEmpty ? Color.gray.opacity(0.4) : Color.umdRed)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(selected.isEmpty ? Color.gray.opacity(0.2) : Color.umdRed.opacity(0.5), lineWidth: 1.5)
+                        )
                 }
+                .disabled(selected.isEmpty)
+                .animation(.easeInOut(duration: 0.25), value: selected.isEmpty)
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
         }
         .background(Color(.systemGroupedBackground))
         .onAppear {

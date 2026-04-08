@@ -16,6 +16,7 @@ struct UMD_DiningApp: App {
                 if !hasCompletedSurvey {
                     OnboardingView {
                         hasCompletedSurvey = true
+                        UserDefaults.standard.set(false, forKey: "hasCompletedTutorial")
                     }
                     .preferredColorScheme(isDarkMode ? .dark : .light)
                 } else {

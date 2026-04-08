@@ -26,7 +26,7 @@ struct AllergenSurveyView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer().frame(height: 60)
+            Spacer().frame(height: 24)
 
             Text("Dietary Preferences")
                 .font(.title)
@@ -38,7 +38,7 @@ struct AllergenSurveyView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
 
-            Spacer().frame(height: 24)
+            Spacer().frame(height: 16)
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -54,7 +54,7 @@ struct AllergenSurveyView: View {
                         .font(.callout)
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.horizontal)
                         .padding(.top, 4)
 
@@ -85,20 +85,35 @@ struct AllergenSurveyView: View {
                         .frame(height: 50)
                         .background(Color.umdRed)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .contentTransition(.interpolate)
                 }
+                .animation(.easeInOut(duration: 0.25), value: selected.isEmpty)
 
-                if !selected.isEmpty {
-                    Button {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
                         selected.removeAll()
-                    } label: {
-                        Text("Clear All")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        isVegetarian = false
+                        isVegan = false
+                        isHalal = false
                     }
+                } label: {
+                    Text("Clear All")
+                        .font(.headline)
+                        .foregroundStyle(selected.isEmpty ? Color.gray.opacity(0.4) : Color.umdRed)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(selected.isEmpty ? Color.gray.opacity(0.2) : Color.umdRed.opacity(0.5), lineWidth: 1.5)
+                        )
                 }
+                .disabled(selected.isEmpty && !isVegetarian && !isVegan && !isHalal)
+                .animation(.easeInOut(duration: 0.25), value: selected.isEmpty)
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
         }
         .background(Color(.systemGroupedBackground))
         .onAppear {
@@ -118,7 +133,7 @@ struct AllergenSurveyView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, 20)
                 .background(isOn.wrappedValue ? Color.umdRed.opacity(0.12) : Color(.systemBackground))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
@@ -143,7 +158,7 @@ struct AllergenSurveyView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, 20)
                 .padding(.horizontal, 8)
             .background(isSelected ? Color.umdRed.opacity(0.12) : Color(.systemBackground))
             .overlay(

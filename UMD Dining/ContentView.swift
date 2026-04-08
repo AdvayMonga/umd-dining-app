@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(NutritionTrackerManager.self) private var tracker
     @State private var selectedTab = 0
     @State private var tabResetID = UUID()
+    @AppStorage("hasCompletedTutorial") private var hasCompletedTutorial = true
 
     private let tabCount = 3
 
@@ -21,28 +22,38 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView(selection: tabBinding) {
-            HomeView(tabResetID: $tabResetID)
-                .tabItem {
-                    Label("Home", systemImage: "fork.knife")
-                }
-                .tag(0)
+        ZStack {
+            TabView(selection: tabBinding) {
+                HomeView(tabResetID: $tabResetID)
+                    .tabItem {
+                        Label("Home", systemImage: "fork.knife")
+                    }
+                    .tag(0)
 
-            TrackerView(tabResetID: $tabResetID)
-                .tabItem {
-                    Label("Tracker", systemImage: "chart.bar.fill")
-                }
-                .tag(1)
+                TrackerView(tabResetID: $tabResetID)
+                    .tabItem {
+                        Label("Tracker", systemImage: "chart.bar.fill")
+                    }
+                    .tag(1)
 
-            ProfileView(tabResetID: $tabResetID)
-                .tabItem {
-                    Label("Profile", systemImage: "person")
-                }
-                .tag(2)
-        }
-        .tint(.umdRed)
-        .onAppear {
-            tracker.setModelContext(modelContext)
+                ProfileView(tabResetID: $tabResetID)
+                    .tabItem {
+                        Label("Profile", systemImage: "person")
+                    }
+                    .tag(2)
+            }
+            .tint(.umdRed)
+            .onAppear {
+                tracker.setModelContext(modelContext)
+            }
+
+            if !hasCompletedTutorial {
+                TutorialOverlayView(isShowing: Binding(
+                    get: { !hasCompletedTutorial },
+                    set: { if !$0 { hasCompletedTutorial = true } }
+                ))
+                .zIndex(100)
+            }
         }
     }
 }

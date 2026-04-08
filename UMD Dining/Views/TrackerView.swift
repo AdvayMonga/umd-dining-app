@@ -386,7 +386,7 @@ struct TrackerView: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 6) {
-                    macroLabel("\(entry.calories) cal", color: Color.umdRed)
+                    macroLabel("\(entry.calories) Cals", color: Color.umdRed)
                     macroLabel("\(Int(entry.proteinG))g P", color: .blue)
                     macroLabel("\(Int(entry.carbsG))g C", color: .green)
                     macroLabel("\(Int(entry.fatG))g F", color: .orange)

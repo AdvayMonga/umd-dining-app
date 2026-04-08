@@ -111,7 +111,7 @@ struct FilterOverlay: View {
     // MARK: - Reusable Components
 
     private func sectionCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .center, spacing: 8) {
             Text(title)
                 .font(.callout)
                 .fontWeight(.semibold)
