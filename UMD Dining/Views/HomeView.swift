@@ -120,7 +120,7 @@ struct HomeView: View {
             }
 
             Button { withAnimation(.easeInOut(duration: 0.3)) { showFilter = true } } label: {
-                Image(systemName: "line.3.horizontal.decrease")
+                Image(systemName: viewModel.filtersMatchDefaults ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                     .font(.title2)
                     .foregroundStyle(Color.umdRed)
                     .frame(width: 44, height: 44)

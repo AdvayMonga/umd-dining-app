@@ -13,6 +13,7 @@ struct FilterOverlay: View {
 
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @State private var showSaved = false
 
     private let allergenOptions = [
         "Contains dairy",
@@ -89,6 +90,49 @@ struct FilterOverlay: View {
                             }
                         }
                     }
+
+                    // Set as Defaults
+                    Button {
+                        let prefs = UserPreferences.shared
+                        prefs.vegetarian = filterVegetarian
+                        prefs.vegan = filterVegan
+                        prefs.halal = filterHalal
+                        prefs.allergens = filterAllergens
+                        prefs.preferredDiningHalls = selectedHallIds
+
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showSaved = true
+                        }
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            withAnimation { showSaved = false }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if showSaved {
+                                Image(systemName: "checkmark")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Saved!")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                            } else {
+                                Text("Set as Defaults")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .foregroundStyle(showSaved ? .green : Color.umdRed)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(showSaved ? Color.green.opacity(0.5) : Color.umdRed.opacity(0.5), lineWidth: 1.5)
+                        )
+                        .contentTransition(.interpolate)
+                    }
+                    .buttonStyle(.plain)
 
                     Spacer().frame(height: 40)
                 }

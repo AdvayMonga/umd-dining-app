@@ -373,10 +373,10 @@ struct ServingPickerSheet: View {
 
                     // Macro preview
                     HStack(spacing: 8) {
-                        macroPill("\(previewCalories) Calories", color: Color.umdRed)
-                        macroPill("\(previewProtein)g Protein", color: .blue)
-                        macroPill("\(previewCarbs)g Carbs", color: .green)
-                        macroPill("\(previewFat)g Fat", color: .orange)
+                        macroPill(value: "\(previewCalories)", label: "Calories", color: Color.umdRed)
+                        macroPill(value: "\(previewProtein)g", label: "Protein", color: .blue)
+                        macroPill(value: "\(previewCarbs)g", label: "Carbs", color: .green)
+                        macroPill(value: "\(previewFat)g", label: "Fat", color: .orange)
                     }
                     .contentTransition(.numericText())
                     .animation(.easeInOut(duration: 0.2), value: servingCount)
@@ -426,14 +426,19 @@ struct ServingPickerSheet: View {
         }
     }
 
-    private func macroPill(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
+    private func macroPill(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.15))
+        .foregroundStyle(color)
+        .clipShape(Capsule())
     }
 
     private func nutritionValue(_ key: String, from nutrition: [String: String]) -> String? {

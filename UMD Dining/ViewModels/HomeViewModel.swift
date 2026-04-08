@@ -52,12 +52,13 @@ class HomeViewModel {
     private var lastLoadedKey: String?
     private var hasLoadedPrefs = false
 
-    private var filtersMatchProfile: Bool {
+    var filtersMatchDefaults: Bool {
         let prefs = UserPreferences.shared
         return filterVegetarian == prefs.vegetarian
             && filterVegan == prefs.vegan
             && filterHalal == prefs.halal
             && filterAllergens == prefs.allergens
+            && selectedHallIds == prefs.preferredDiningHalls
             && !filterHighProtein
     }
 
@@ -260,7 +261,7 @@ class HomeViewModel {
                 allergens: filterAllergens
             )
             lastLoadedKey = currentCacheKey
-            if filtersMatchProfile {
+            if filtersMatchDefaults {
                 saveToDisk()
             }
             if !availableMealPeriods.contains(selectedMealPeriod),
