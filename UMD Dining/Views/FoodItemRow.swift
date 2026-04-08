@@ -313,6 +313,56 @@ struct ServingPickerSheet: View {
         }
     }
 
+    /// Max quantity target for each unit type
+    private func maxForUnit(_ unit: String) -> Double {
+        switch unit {
+        case "oz", "fl oz":  return 20
+        case "ea":           return 12
+        case "slice":        return 10
+        case "half":         return 10
+        case "cup":          return 8
+        case "tbsp":         return 16
+        case "tsp":          return 24
+        case "ml":           return 500
+        case "g":            return 500
+        default:             return 10
+        }
+    }
+
+    /// Compute max servings for the slider based on serving size and unit
+    private var sliderMax: Double {
+        guard let size = servingSize else { return 10 }
+        let pattern = #"^([\d]+(?:\s*[\d]*/[\d]+)?)\s*(.*)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: size, range: NSRange(size.startIndex..., in: size)),
+              let numRange = Range(match.range(at: 1), in: size) else { return 10 }
+        let numStr = String(size[numRange]).trimmingCharacters(in: .whitespaces)
+        let unitRange = Range(match.range(at: 2), in: size)
+        let rawUnit = unitRange.map { String(size[$0]).trimmingCharacters(in: .whitespaces) } ?? ""
+        let unit = normalizeUnit(rawUnit)
+
+        let num: Double
+        let parts = numStr.split(separator: " ")
+        if parts.count == 2, parts[1].contains("/") {
+            let whole = Double(parts[0]) ?? 0
+            let fracParts = parts[1].split(separator: "/")
+            if fracParts.count == 2, let n = Double(fracParts[0]), let d = Double(fracParts[1]), d != 0 {
+                num = whole + n / d
+            } else { num = whole }
+        } else if numStr.contains("/") {
+            let fracParts = numStr.split(separator: "/")
+            if fracParts.count == 2, let n = Double(fracParts[0]), let d = Double(fracParts[1]), d != 0 {
+                num = n / d
+            } else { num = 1 }
+        } else {
+            num = Double(numStr) ?? 1
+        }
+
+        guard num > 0 else { return 10 }
+        let maxServings = ceil(maxForUnit(unit) / num)
+        return max(1, min(maxServings, 20)) // cap at 20 servings
+    }
+
     private var previewCalories: Int {
         Int(TrackedEntry.parseNumeric(nutritionValue("Calories", from: nutrition)) * servingCount)
     }
@@ -383,7 +433,7 @@ struct ServingPickerSheet: View {
 
                     Slider(
                         value: $servingCount,
-                        in: 0.5...10.0,
+                        in: 0.5...sliderMax,
                         step: 0.5
                     )
                     .tint(Color.umdRed)

@@ -58,7 +58,6 @@ class HomeViewModel {
             && filterVegan == prefs.vegan
             && filterHalal == prefs.halal
             && filterAllergens == prefs.allergens
-            && selectedHallIds == prefs.preferredDiningHalls
             && !filterHighProtein
     }
 

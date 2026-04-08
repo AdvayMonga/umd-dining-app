@@ -70,6 +70,17 @@ private struct SuccessResponse: Decodable {
     let success: Bool
 }
 
+struct AnnouncementData: Decodable, Sendable {
+    let title: String
+    let message: String
+    let active: Bool
+}
+
+private struct AnnouncementResponse: Decodable {
+    let success: Bool
+    let data: AnnouncementData
+}
+
 struct UserPreferencesData: Decodable, Sendable {
     let vegetarian: Bool
     let vegan: Bool
@@ -445,5 +456,13 @@ actor DiningAPIService {
         } else {
             AuthManager.shared.signOut()
         }
+    }
+
+    // MARK: - Announcements
+
+    func fetchAnnouncement() async -> AnnouncementData? {
+        guard let data = try? await fetch("\(baseURL)/announcement") else { return nil }
+        guard let response = try? JSONDecoder().decode(AnnouncementResponse.self, from: data) else { return nil }
+        return response.data.active ? response.data : nil
     }
 }

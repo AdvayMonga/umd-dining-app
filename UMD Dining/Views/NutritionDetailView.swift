@@ -153,7 +153,7 @@ struct NutritionDetailView: View {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 4) {
                         if let size = servingSize {
-                            Text("Serving Size: \(size)")
+                            Text("Serving Size: \(normalizeServingSize(size))")
                                 .font(.subheadline)
                                 .fontWeight(.bold)
                                 .foregroundStyle(.secondary)
@@ -483,6 +483,33 @@ struct NutritionDetailView: View {
         let digits = value.filter { $0.isNumber || $0 == "." }
         if let num = Double(digits), num == 0 { return nil }
         return value
+    }
+
+    private func normalizeServingSize(_ raw: String) -> String {
+        // Split into number + unit, normalize the unit
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        let parts = trimmed.split(separator: " ", maxSplits: 1)
+        guard parts.count == 2 else { return trimmed }
+        let number = String(parts[0])
+        let unit = normalizeUnit(String(parts[1]))
+        return "\(number) \(unit)"
+    }
+
+    private func normalizeUnit(_ raw: String) -> String {
+        let lowered = raw.lowercased().trimmingCharacters(in: .whitespaces)
+        switch lowered {
+        case "oz", "oz.", "ounce", "ounces": return "oz"
+        case "ea", "ea.", "each", "pc", "pcs", "piece", "pieces": return "ea"
+        case "cup", "cups": return "cup"
+        case "tbsp", "tablespoon", "tablespoons": return "tbsp"
+        case "tsp", "teaspoon", "teaspoons": return "tsp"
+        case "ml", "milliliter", "milliliters": return "ml"
+        case "g", "gram", "grams": return "g"
+        case "half": return "half"
+        case "slice", "slices": return "slice"
+        case "fl oz", "fluid oz": return "fl oz"
+        default: return raw
+        }
     }
 
     private func normalizedKey(_ key: String) -> String {

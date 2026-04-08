@@ -13,6 +13,7 @@ struct ProfileView: View {
     @State private var isDeleting = false
     @State private var showCuisinePrefs = false
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var announcement: AnnouncementData?
 
     private let allergenOptions = [
         ("Contains dairy", "Dairy"),
@@ -31,6 +32,25 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         Color.clear.frame(height: 0).id("profileTop")
+
+                        // --- Announcement ---
+                        if let announcement {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(announcement.title)
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(Color.umdRed)
+                                Text(announcement.message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .background(Color.umdRed.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.2), lineWidth: 1))
+                        }
+
                         // --- Food Preferences ---
                         sectionCard("Food Preferences") {
                             filterPill("Cuisine Preferences", subtitle: preferences.cuisinePrefs.isEmpty ? "Not set" : "\(preferences.cuisinePrefs.count) selected") {
@@ -132,6 +152,7 @@ struct ProfileView: View {
                     .padding(.top, 8)
                 }
                 .onAppear { scrollProxy = proxy }
+                .task { announcement = await DiningAPIService.shared.fetchAnnouncement() }
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Profile")
@@ -311,8 +332,13 @@ struct ProfileView: View {
                     showSignOutAlert = false
                 } label: {
                     Text("Cancel")
-                        .font(.subheadline)
+                        .font(.headline)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1.5))
                 }
             }
             .padding(24)
@@ -368,8 +394,13 @@ struct ProfileView: View {
                     showDeleteAlert = false
                 } label: {
                     Text("Cancel")
-                        .font(.subheadline)
+                        .font(.headline)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1.5))
                 }
             }
             .padding(24)

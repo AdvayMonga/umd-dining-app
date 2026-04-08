@@ -157,6 +157,11 @@ class PreferencesBody(BaseModel):
     cuisine_prefs: list[str] = []
     preferred_dining_halls: list[str] = []
 
+class AnnouncementBody(BaseModel):
+    title: str = ''
+    message: str = ''
+    active: bool = True
+
 class IntakeBody(BaseModel):
     rec_num: str
     name: str = ''
@@ -1267,4 +1272,28 @@ async def remove_intake(request: Request, body: RemoveIntakeBody = Body(...), us
         query['logged_at'] = body.logged_at
 
     await db.intake.delete_one(query)
+    return {'success': True}
+
+
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
+@router.get('/api/announcement')
+@limiter.limit("30/minute")
+async def get_announcement(request: Request):
+    doc = await db.announcements.find_one({}, {'_id': 0})
+    if not doc or not doc.get('active', False):
+        return {'success': True, 'data': {'title': '', 'message': '', 'active': False}}
+    return {'success': True, 'data': doc}
+
+
+@router.put('/api/announcement')
+@limiter.limit("10/minute")
+async def update_announcement(request: Request, body: AnnouncementBody = Body(...), _: str = Depends(require_admin)):
+    await db.announcements.update_one(
+        {},
+        {'$set': {'title': body.title, 'message': body.message, 'active': body.active}},
+        upsert=True
+    )
     return {'success': True}
