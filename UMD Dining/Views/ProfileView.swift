@@ -30,10 +30,13 @@ struct ProfileView: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         Color.clear.frame(height: 0).id("profileTop")
 
-                        // --- Announcement ---
+                        // 1. Account
+                        contactCard
+
+                        // 2. Announcement
                         if let announcement {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(announcement.title)
@@ -51,54 +54,18 @@ struct ProfileView: View {
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.2), lineWidth: 1))
                         }
 
-                        // --- Food Preferences ---
-                        sectionCard("Food Preferences") {
-                            filterPill("Cuisine Preferences", subtitle: preferences.cuisinePrefs.isEmpty ? "Not set" : "\(preferences.cuisinePrefs.count) selected") {
-                                showCuisinePrefs = true
-                            }
-
-                            selectablePill("Vegetarian", isOn: $preferences.vegetarian)
-                            selectablePill("Vegan", isOn: $preferences.vegan)
-                            selectablePill("Halal", isOn: $preferences.halal)
-
-                            Text("Preferred Dining Halls")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
-                                .padding(.top, 4)
-
-                            ForEach([("19", "Yahentamitsi"), ("51", "251 North"), ("16", "South Campus Diner")], id: \.0) { hallId, hallName in
-                                selectablePill(hallName, isOn: Binding(
-                                    get: { preferences.preferredDiningHalls.contains(hallId) },
-                                    set: { on in
-                                        if on { preferences.preferredDiningHalls.insert(hallId) }
-                                        else { preferences.preferredDiningHalls.remove(hallId) }
-                                    }
-                                ))
-                            }
-
-                            Text("Allergens to Avoid")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
-                                .padding(.top, 4)
-
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                                ForEach(allergenOptions, id: \.0) { key, label in
-                                    selectablePill(label, isOn: Binding(
-                                        get: { preferences.allergens.contains(key) },
-                                        set: { on in
-                                            if on { preferences.allergens.insert(key) }
-                                            else { preferences.allergens.remove(key) }
-                                        }
-                                    ))
+                        // 3. Feedback
+                        togglePill(
+                            label: "Send Feedback",
+                            icon: "envelope",
+                            action: {
+                                if let url = URL(string: "https://forms.gle/53RrYDkmZjmf72Py9") {
+                                    UIApplication.shared.open(url)
                                 }
                             }
-                        }
+                        )
 
-                        // --- Favorites ---
+                        // 4. Favorites
                         NavigationLink(destination: FavoritesView()) {
                             HStack {
                                 Text("Favorites")
@@ -117,37 +84,79 @@ struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
 
-                        // --- General ---
-                        sectionCard("General") {
-                            contactCard
-
-                            togglePill(
-                                label: isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
-                                icon: isDarkMode ? "sun.max.fill" : "moon.fill",
-                                action: { isDarkMode.toggle() }
-                            )
-                            togglePill(
-                                label: "Send Feedback",
-                                icon: "envelope",
-                                action: {
-                                    if let url = URL(string: "https://forms.gle/53RrYDkmZjmf72Py9") {
-                                        UIApplication.shared.open(url)
-                                    }
-                                }
-                            )
-                            togglePill(
-                                label: "Privacy Policy",
-                                icon: "hand.raised",
-                                action: {
-                                    if let url = URL(string: "https://api.umddining.com/privacy") {
-                                        UIApplication.shared.open(url)
-                                    }
-                                }
-                            )
+                        // 5. Cuisine Preferences
+                        filterPill("Cuisine Preferences", subtitle: preferences.cuisinePrefs.isEmpty ? "Not set" : "\(preferences.cuisinePrefs.count) selected") {
+                            showCuisinePrefs = true
                         }
 
+                        // 6. Preferred Dining Halls
+                        sectionLabel("Preferred Dining Halls")
+                        HStack(spacing: 8) {
+                            centeredSelectablePill("Yahentamitsi", isOn: Binding(
+                                get: { preferences.preferredDiningHalls.contains("19") },
+                                set: { on in
+                                    if on { preferences.preferredDiningHalls.insert("19") }
+                                    else { preferences.preferredDiningHalls.remove("19") }
+                                }
+                            ))
+                            centeredSelectablePill("251 North", isOn: Binding(
+                                get: { preferences.preferredDiningHalls.contains("51") },
+                                set: { on in
+                                    if on { preferences.preferredDiningHalls.insert("51") }
+                                    else { preferences.preferredDiningHalls.remove("51") }
+                                }
+                            ))
+                            centeredSelectablePill("South", isOn: Binding(
+                                get: { preferences.preferredDiningHalls.contains("16") },
+                                set: { on in
+                                    if on { preferences.preferredDiningHalls.insert("16") }
+                                    else { preferences.preferredDiningHalls.remove("16") }
+                                }
+                            ))
+                        }
+
+                        // 7. Dietary Preferences
+                        sectionLabel("Dietary Preferences")
+                        HStack(spacing: 8) {
+                            centeredSelectablePill("Vegetarian", isOn: $preferences.vegetarian)
+                            centeredSelectablePill("Vegan", isOn: $preferences.vegan)
+                            centeredSelectablePill("Halal", isOn: $preferences.halal)
+                        }
+
+                        // 8. Allergens
+                        sectionLabel("Allergens to Avoid")
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(allergenOptions, id: \.0) { key, label in
+                                centeredSelectablePill(label, isOn: Binding(
+                                    get: { preferences.allergens.contains(key) },
+                                    set: { on in
+                                        if on { preferences.allergens.insert(key) }
+                                        else { preferences.allergens.remove(key) }
+                                    }
+                                ))
+                            }
+                        }
+
+                        // 9. Dark mode
+                        togglePill(
+                            label: isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
+                            icon: isDarkMode ? "sun.max.fill" : "moon.fill",
+                            action: { isDarkMode.toggle() }
+                        )
+
+                        // 10. Privacy Policy
+                        togglePill(
+                            label: "Privacy Policy",
+                            icon: "hand.raised",
+                            action: {
+                                if let url = URL(string: "https://api.umddining.com/privacy") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        )
+
                         Spacer().frame(height: 40)
-                }
+                    }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                 }
@@ -441,6 +450,35 @@ struct ProfileView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
             .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 4)
+    }
+
+    private func centeredSelectablePill(_ label: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Text(label)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(isOn.wrappedValue ? Color.umdRed.opacity(0.12) : Color(.systemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isOn.wrappedValue ? Color.umdRed : Color(.systemGray4), lineWidth: isOn.wrappedValue ? 2 : 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
