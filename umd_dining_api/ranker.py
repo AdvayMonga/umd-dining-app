@@ -128,9 +128,9 @@ def rank_items(
     # Linearly interpolates from cuisine-only → favorites-only over 0–10 favs.
     num_favs = len(fav_rec_nums)
     t = min(num_favs, 10) / 10  # 0.0 at 0 favs → 1.0 at 10+ favs
-    sim_high = 0.58 + t * (0.73 - 0.58)  # 0.58 → 0.73
-    sim_mid = 0.50 + t * (0.65 - 0.50)   # 0.50 → 0.65
-    sim_low = 0.42 + t * (0.55 - 0.42)   # 0.42 → 0.55
+    sim_high = 0.65 + t * (0.73 - 0.65)  # 0.65 → 0.73
+    sim_mid = 0.57 + t * (0.65 - 0.57)   # 0.57 → 0.65
+    sim_low = 0.50 + t * (0.55 - 0.50)   # 0.50 → 0.55
     user_views = user_views or {}
     global_views = global_views or {}
     hall_interest = hall_interest or {}
@@ -258,6 +258,11 @@ def rank_items(
                 item_embedding = food.get('embedding')
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
+                    if not hasattr(rank_items, '_debug_logged'):
+                        print(f"[DEBUG] sim_thresholds: low={sim_low:.3f} mid={sim_mid:.3f} high={sim_high:.3f}")
+                        rank_items._debug_logged = True
+                    if sim >= 0.25:
+                        print(f"[DEBUG] sim={sim:.3f} for {food.get('name', rec_num)}")
                     if sim >= sim_high:
                         score += 55
                         signals.add('similar_to_favorites')

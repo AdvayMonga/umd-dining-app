@@ -455,10 +455,12 @@ async def get_ranked_menu(
 
     # Blend cuisine centroids: full strength at 0 favs, linearly decreasing to 0.5 at 20+ favs
     if has_cuisine_prefs:
+        print(f"[DEBUG] cuisine_prefs: {user_prefs['cuisine_prefs']}")
         cuisine_docs = await db.cuisine_embeddings.find(
             {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
-            {'embedding': 1, '_id': 0}
+            {'embedding': 1, 'cuisine': 1, '_id': 0}
         ).to_list(None)
+        print(f"[DEBUG] cuisine_docs found: {len(cuisine_docs)}, cuisines: {[d.get('cuisine') for d in cuisine_docs]}")
         cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
         if cuisine_embs:
             import numpy as np
@@ -466,6 +468,9 @@ async def get_ranked_menu(
             weight = 1.0 - 0.5 * min(num_favs, 20) / 20  # 1.0 → 0.5 over 0–20 favs
             weighted = [(np.asarray(e, dtype=np.float32) * weight).tolist() for e in cuisine_embs]
             fav_embeddings = fav_embeddings + weighted
+        print(f"[DEBUG] fav_embeddings count after blend: {len(fav_embeddings)}")
+    else:
+        print(f"[DEBUG] no cuisine prefs, user_id={user_id}, prefs={user_prefs}")
 
     preferred_halls = user_prefs.get('preferred_dining_halls', []) if user_prefs else []
 

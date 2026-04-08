@@ -19,7 +19,7 @@ struct FoodItemRow: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 if !item.tags.isEmpty {
-                    HStack(spacing: 4) {
+                    FlowLayout(spacing: 4) {
                         ForEach(item.tags, id: \.self) { tag in
                             HStack(spacing: 3) {
                                 if let icon = tagIcon(for: tag) {
@@ -208,7 +208,7 @@ struct FoodItemRow: View {
         case "Favorite":     return .pink
         case "Trending":     return .orange
         case "Recommended":  return .teal
-        case "High Protein": return .blue
+        case "High Protein": return .purple
         default:             return .gray
         }
     }
@@ -253,10 +253,64 @@ struct ServingPickerSheet: View {
 
     private var scaledServingSize: String? {
         guard let size = servingSize else { return nil }
-        if servingCount == 1.0 { return size }
-        let label = servingCount.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(servingCount))" : String(format: "%.1f", servingCount)
-        return "\(label) x \(size)"
+        // Extract numeric portion and unit, e.g. "4 1/2 oz" -> (4.5, "oz")
+        let pattern = #"^([\d]+(?:\s*[\d]*/[\d]+)?)\s*(.*)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: size, range: NSRange(size.startIndex..., in: size)),
+              let numRange = Range(match.range(at: 1), in: size) else {
+            if servingCount == 1.0 { return normalizeUnit(size) }
+            let label = servingCount.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(servingCount))" : String(format: "%.1f", servingCount)
+            return "\(label) x \(normalizeUnit(size))"
+        }
+        let numStr = String(size[numRange]).trimmingCharacters(in: .whitespaces)
+        let unitRange = Range(match.range(at: 2), in: size)
+        let rawUnit = unitRange.map { String(size[$0]).trimmingCharacters(in: .whitespaces) } ?? ""
+        let unit = normalizeUnit(rawUnit)
+
+        // Parse number — handle "4 1/2" (whole + fraction) or "1/2" (fraction only)
+        let num: Double
+        let parts = numStr.split(separator: " ")
+        if parts.count == 2, parts[1].contains("/") {
+            let whole = Double(parts[0]) ?? 0
+            let fracParts = parts[1].split(separator: "/")
+            if fracParts.count == 2, let n = Double(fracParts[0]), let d = Double(fracParts[1]), d != 0 {
+                num = whole + n / d
+            } else {
+                num = whole
+            }
+        } else if numStr.contains("/") {
+            let fracParts = numStr.split(separator: "/")
+            if fracParts.count == 2, let n = Double(fracParts[0]), let d = Double(fracParts[1]), d != 0 {
+                num = n / d
+            } else {
+                num = 1
+            }
+        } else {
+            num = Double(numStr) ?? 1
+        }
+
+        let scaled = num * servingCount
+        let formatted = scaled.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(scaled))" : String(format: "%.1f", scaled)
+        return "\(formatted) \(unit)".trimmingCharacters(in: .whitespaces)
+    }
+
+    private func normalizeUnit(_ raw: String) -> String {
+        let lowered = raw.lowercased().trimmingCharacters(in: .whitespaces)
+        switch lowered {
+        case "oz", "oz.", "ounce", "ounces": return "oz"
+        case "ea", "ea.", "each", "pc", "pcs", "piece", "pieces": return "ea"
+        case "cup", "cups": return "cup"
+        case "tbsp", "tablespoon", "tablespoons": return "tbsp"
+        case "tsp", "teaspoon", "teaspoons": return "tsp"
+        case "ml", "milliliter", "milliliters": return "ml"
+        case "g", "gram", "grams": return "g"
+        case "half": return "half"
+        case "slice", "slices": return "slice"
+        case "fl oz", "fluid oz": return "fl oz"
+        default: return raw
+        }
     }
 
     private var previewCalories: Int {
@@ -319,7 +373,7 @@ struct ServingPickerSheet: View {
 
                     Slider(
                         value: $servingCount,
-                        in: 0.5...5.0,
+                        in: 0.5...10.0,
                         step: 0.5
                     )
                     .tint(Color.umdRed)

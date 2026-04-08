@@ -62,7 +62,7 @@ class UserPreferences {
 
     /// Fetch preferences from the API (only for signed-in, non-guest users)
     func syncFromServer() async {
-        guard let userId = AuthManager.shared.userId, !AuthManager.shared.isGuest else { return }
+        guard let userId = AuthManager.shared.userId else { return }
         do {
             let prefs = try await DiningAPIService.shared.fetchPreferences(userId: userId)
             vegetarian = prefs.vegetarian
@@ -100,7 +100,7 @@ class UserPreferences {
     }
 
     private func syncToServer() {
-        guard let userId = AuthManager.shared.userId, !AuthManager.shared.isGuest else { return }
+        guard let userId = AuthManager.shared.userId else { return }
         Task {
             try? await DiningAPIService.shared.updatePreferences(
                 userId: userId,

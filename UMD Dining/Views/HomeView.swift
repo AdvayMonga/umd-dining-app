@@ -105,7 +105,7 @@ struct HomeView: View {
         HStack {
             Text("UMD Dining")
                 .font(.title)
-                .fontWeight(.bold)
+                .fontWeight(.regular)
                 .foregroundStyle(Color.umdRed)
 
             Spacer()
