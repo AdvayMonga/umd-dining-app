@@ -61,6 +61,7 @@ async def _get_trending_searches():
     if now < _trending_searches_cache['expires']:
         return _trending_searches_cache['data']
     pipeline = [
+        {'$match': {'result_count': {'$gt': 0}}},
         {'$group': {'_id': {'$toLower': '$query'}, 'count': {'$sum': 1}}},
         {'$sort': {'count': -1}},
         {'$limit': 10}
@@ -909,7 +910,7 @@ async def track_search_query(
     body: SearchQueryBody,
     user_id: Optional[str] = Depends(get_optional_user),
 ):
-    if len(body.query) > 200:
+    if len(body.query) > 200 or body.result_count == 0:
         return {'success': True}
     await db.search_queries.insert_one({
         'user_id': user_id,
