@@ -22,17 +22,17 @@ struct FoodItemRow: View {
                     FlowLayout(spacing: 4) {
                         ForEach(item.tags, id: \.self) { tag in
                             HStack(spacing: 3) {
-                                if let icon = tagIcon(for: tag) {
+                                if let icon = DietaryStyles.tagIcon(for: tag) {
                                     Image(systemName: icon)
                                         .font(.system(size: 8, weight: .bold))
                                 }
-                                Text(tagLabel(for: tag))
+                                Text(DietaryStyles.tagLabel(for: tag))
                                     .font(.system(size: 10, weight: .semibold))
                             }
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(tagColor(for: tag).opacity(0.15))
-                            .foregroundStyle(tagColor(for: tag))
+                            .background(DietaryStyles.tagColor(for: tag).opacity(0.15))
+                            .foregroundStyle(DietaryStyles.tagColor(for: tag))
                             .clipShape(Capsule())
                         }
                     }
@@ -56,12 +56,12 @@ struct FoodItemRow: View {
                 if !item.dietaryIcons.isEmpty {
                     HStack(spacing: 4) {
                         ForEach(item.dietaryIcons, id: \.self) { icon in
-                            Text(shortLabel(for: icon))
+                            Text(DietaryStyles.dietaryLabel(for: icon))
                                 .font(.system(size: 10, weight: .medium))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(color(for: icon).opacity(0.15))
-                                .foregroundStyle(color(for: icon))
+                                .background(DietaryStyles.dietaryColor(for: icon).opacity(0.15))
+                                .foregroundStyle(DietaryStyles.dietaryColor(for: icon))
                                 .clipShape(Capsule())
                         }
                     }
@@ -187,55 +187,6 @@ struct FoodItemRow: View {
         showServingPicker = true
     }
 
-    private func tagLabel(for tag: String) -> String {
-        tag.replacingOccurrences(of: "HalalFriendly", with: "Halal Friendly")
-           .replacingOccurrences(of: "Contains ", with: "")
-           .capitalized
-    }
-
-    private func tagIcon(for tag: String) -> String? {
-        switch tag {
-        case "Favorite": return "heart.fill"
-        case "Recommended": return "star.fill"
-        case "Trending": return "flame.fill"
-        case "High Protein": return "dumbbell.fill"
-        default: return nil
-        }
-    }
-
-    private func tagColor(for tag: String) -> Color {
-        switch tag {
-        case "Favorite":     return .pink
-        case "Trending":     return .orange
-        case "Recommended":  return .teal
-        case "High Protein": return .purple
-        default:             return .gray
-        }
-    }
-
-    private func shortLabel(for icon: String) -> String {
-        switch icon {
-        case "HalalFriendly": return "Halal"
-        case "vegan": return "V"
-        case "vegetarian": return "VG"
-        case "Contains dairy": return "Dairy"
-        case "Contains egg": return "Egg"
-        case "Contains fish": return "Fish"
-        case "Contains gluten": return "Gluten"
-        case "Contains nuts": return "Nuts"
-        case "Contains Shellfish": return "Shellfish"
-        case "Contains sesame": return "Sesame"
-        case "Contains soy": return "Soy"
-        default: return icon
-        }
-    }
-
-    private func color(for icon: String) -> Color {
-        switch icon {
-        case "vegan", "vegetarian": return .green
-        default: return .gray
-        }
-    }
 }
 
 // MARK: - Serving Picker Overlay

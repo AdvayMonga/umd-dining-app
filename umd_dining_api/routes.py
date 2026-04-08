@@ -577,6 +577,10 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
         except ValueError:
             pass
 
+    # Get dietary_icons from menus collection (reliable source for allergen info)
+    menu_entry = await db.menus.find_one({'rec_num': rec_num}, {'dietary_icons': 1, '_id': 0})
+    dietary_icons = menu_entry.get('dietary_icons', []) if menu_entry else []
+
     return {
         'success': True,
         'data': {
@@ -586,6 +590,7 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
             'allergens': food.get('allergens', ''),
             'ingredients': food.get('ingredients', ''),
             'next_available': next_available,
+            'dietary_icons': dietary_icons,
         }
     }
 

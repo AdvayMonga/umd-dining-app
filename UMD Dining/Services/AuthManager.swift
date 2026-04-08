@@ -144,6 +144,7 @@ class AuthManager {
     }
 
     func signOut() {
+        let wasGuest = isGuest
         userId = nil
         jwtToken = nil
         isGuest = false
@@ -152,13 +153,17 @@ class AuthManager {
         deleteFromKeychain(key: jwtKey)
         deleteFromKeychain(key: nameKey)
         UserDefaults.standard.removeObject(forKey: guestKey)
-        FavoritesManager.shared.clearAll()
 
-        // Clear all local caches and preferences
+        // Only wipe local data for guest accounts — Apple users keep data on server
+        if wasGuest {
+            FavoritesManager.shared.clearAll()
+            UserPreferences.shared.clearAll()
+        }
+
+        // Always clear caches (they'll reload on next sign-in)
         UserDefaults.standard.removeObject(forKey: "cached_feed_data")
         UserDefaults.standard.removeObject(forKey: "cached_feed_key")
         UserDefaults.standard.removeObject(forKey: "recentSearches")
-        UserPreferences.shared.clearAll()
     }
 
     // MARK: - Keychain

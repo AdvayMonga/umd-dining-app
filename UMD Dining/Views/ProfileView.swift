@@ -319,7 +319,9 @@ struct ProfileView: View {
                     .font(.title3)
                     .fontWeight(.bold)
 
-                Text("Your favorites and preferences will be lost.")
+                Text(AuthManager.shared.isGuest
+                     ? "Your favorites and preferences will be lost."
+                     : "Your data will be saved to your account. Sign back in anytime to restore it.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -328,12 +330,12 @@ struct ProfileView: View {
                     showSignOutAlert = false
                     AuthManager.shared.signOut()
                 } label: {
-                    Text("Sign Out & Delete Data")
+                    Text("Sign Out")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 48)
-                        .background(Color.red)
+                        .background(Color.umdRed)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 
@@ -385,6 +387,9 @@ struct ProfileView: View {
                         } catch {
                             print("Delete account API error: \(error)")
                         }
+                        // Wipe all local data before signing out
+                        FavoritesManager.shared.clearAll()
+                        UserPreferences.shared.clearAll()
                         AuthManager.shared.signOut()
                         UserDefaults.standard.set(false, forKey: "hasCompletedPalateSurvey")
                         isDeleting = false

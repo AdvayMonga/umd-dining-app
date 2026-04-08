@@ -52,8 +52,8 @@ struct TutorialOverlayView: View {
                         .foregroundStyle(.primary)
 
                     HStack(spacing: 4) {
-                        mockTag("Recommended", color: .teal)
-                        mockTag("High Protein", color: .purple)
+                        mockTag("Recommended", color: DietaryStyles.tagColor(for: "Recommended"))
+                        mockTag("High Protein", color: DietaryStyles.tagColor(for: "High Protein"))
                     }
 
                     Text("Ciao Pizza \u{00B7} 251 North")
@@ -61,10 +61,10 @@ struct TutorialOverlayView: View {
                         .foregroundStyle(.secondary)
 
                     HStack(spacing: 4) {
-                        dietaryPill("Gluten", color: .gray)
-                        dietaryPill("Dairy", color: .gray)
-                        dietaryPill("Egg", color: .gray)
-                        dietaryPill("V", color: .green)
+                        dietaryPill("Gluten", color: DietaryStyles.dietaryColor(for: "Contains gluten"))
+                        dietaryPill("Dairy", color: DietaryStyles.dietaryColor(for: "Contains dairy"))
+                        dietaryPill("Egg", color: DietaryStyles.dietaryColor(for: "Contains egg"))
+                        dietaryPill("V", color: DietaryStyles.dietaryColor(for: "vegan"))
                     }
                 }
 

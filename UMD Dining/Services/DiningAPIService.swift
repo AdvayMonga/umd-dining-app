@@ -450,11 +450,11 @@ actor DiningAPIService {
     @MainActor
     private func handleUnauthorized() async {
         if AuthManager.shared.isGuest { return }
-        // Try refreshing the token before signing out
+        // Try refreshing the token — but never sign out automatically.
+        // The user stays signed in locally; worst case API calls fail until
+        // they get a working connection again.
         if let newToken = try? await refreshToken() {
             AuthManager.shared.updateToken(newToken)
-        } else {
-            AuthManager.shared.signOut()
         }
     }
 

@@ -9,6 +9,8 @@ struct UMD_DiningApp: App {
     @State private var trackerManager = NutritionTrackerManager.shared
     @AppStorage("isDarkMode") private var isDarkMode = true
     @AppStorage("hasCompletedPalateSurvey") private var hasCompletedSurvey = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var hasCheckedCredential = false
 
     var body: some Scene {
         WindowGroup {
@@ -26,15 +28,17 @@ struct UMD_DiningApp: App {
                         .environment(favoritesManager)
                         .environment(trackerManager)
                         .task {
-                            await authManager.checkAppleCredentialState()
-                            await authManager.refreshTokenIfNeeded()
                             await favoritesManager.syncFromServer()
                             await UserPreferences.shared.syncFromServer()
                         }
-                        .onReceive(NotificationCenter.default.publisher(
-                            for: ASAuthorizationAppleIDProvider.credentialRevokedNotification
-                        )) { _ in
-                            authManager.signOut()
+                        .onChange(of: scenePhase) {
+                            if scenePhase == .active && !hasCheckedCredential {
+                                hasCheckedCredential = true
+                                Task {
+                                    await authManager.checkAppleCredentialState()
+                                    await authManager.refreshTokenIfNeeded()
+                                }
+                            }
                         }
                 }
             } else {

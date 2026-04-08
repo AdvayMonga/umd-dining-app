@@ -140,17 +140,17 @@ struct NutritionDetailView: View {
                     HStack(spacing: 6) {
                         ForEach(tags, id: \.self) { tag in
                             HStack(spacing: 3) {
-                                if let icon = tagIcon(for: tag) {
+                                if let icon = DietaryStyles.tagIcon(for: tag) {
                                     Image(systemName: icon)
                                         .font(.system(size: 10, weight: .bold))
                                 }
-                                Text(tagLabel(for: tag))
+                                Text(DietaryStyles.tagLabel(for: tag))
                                     .font(.system(size: 12, weight: .semibold))
                             }
                             .padding(.horizontal, 9)
                             .padding(.vertical, 4)
-                            .background(tagColor(for: tag).opacity(0.15))
-                            .foregroundStyle(tagColor(for: tag))
+                            .background(DietaryStyles.tagColor(for: tag).opacity(0.15))
+                            .foregroundStyle(DietaryStyles.tagColor(for: tag))
                             .clipShape(Capsule())
                         }
                     }
@@ -230,20 +230,43 @@ struct NutritionDetailView: View {
                     nutritionTable(info.nutrition)
                 }
 
-                // Allergens
-                if !info.allergens.isEmpty {
+                // Dietary Info & Allergens
+                let allergenIcons = info.dietaryIcons.filter { DietaryStyles.isAllergen($0) }
+                let lifestyleIcons = info.dietaryIcons.filter { !DietaryStyles.isAllergen($0) }
+
+                if !lifestyleIcons.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Allergens")
+                        Text("Dietary")
                             .font(.headline)
                         FlowLayout(spacing: 6) {
-                            ForEach(info.allergens.components(separatedBy: ", "), id: \.self) { allergen in
-                                Text(allergen.trimmingCharacters(in: .whitespaces))
+                            ForEach(lifestyleIcons, id: \.self) { icon in
+                                Text(DietaryStyles.dietaryLabel(for: icon))
                                     .font(.caption)
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
-                                    .background(Color.orange.opacity(0.15))
-                                    .foregroundStyle(.orange)
+                                    .background(DietaryStyles.dietaryColor(for: icon).opacity(0.15))
+                                    .foregroundStyle(DietaryStyles.dietaryColor(for: icon))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                if !allergenIcons.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Allergens")
+                            .font(.headline)
+                        FlowLayout(spacing: 6) {
+                            ForEach(allergenIcons, id: \.self) { icon in
+                                Text(DietaryStyles.dietaryLabel(for: icon))
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(DietaryStyles.dietaryColor(for: icon).opacity(0.15))
+                                    .foregroundStyle(DietaryStyles.dietaryColor(for: icon))
                                     .clipShape(Capsule())
                             }
                         }
@@ -442,32 +465,6 @@ struct NutritionDetailView: View {
             .padding(.horizontal)
             .padding(.vertical, 6)
             Divider().padding(.horizontal)
-        }
-    }
-
-    private func tagLabel(for tag: String) -> String {
-        tag.replacingOccurrences(of: "HalalFriendly", with: "Halal Friendly")
-           .replacingOccurrences(of: "Contains ", with: "")
-           .capitalized
-    }
-
-    private func tagIcon(for tag: String) -> String? {
-        switch tag {
-        case "Favorite": return "heart.fill"
-        case "Recommended": return "star.fill"
-        case "Trending": return "flame.fill"
-        case "High Protein": return "dumbbell.fill"
-        default: return nil
-        }
-    }
-
-    private func tagColor(for tag: String) -> Color {
-        switch tag {
-        case "Favorite":     return .pink
-        case "Trending":     return .orange
-        case "Recommended":  return .teal
-        case "High Protein": return .blue
-        default:             return .gray
         }
     }
 
