@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, B
 from pydantic import BaseModel
 
 from main import db, limiter, SECRET_KEY, ADMIN_SECRET
-from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition
+from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition, get_nutrition_info
 from ranker import rank_items
 from search_ranker import rank_search_results
 from embeddings import generate_embedding_async
@@ -1302,3 +1302,48 @@ async def update_announcement(request: Request, body: AnnouncementBody = Body(..
         upsert=True
     )
     return {'success': True}
+
+
+@router.post('/api/admin/backfill-nutrition')
+@limiter.limit("5/minute")
+async def backfill_nutrition(request: Request, _: str = Depends(require_admin)):
+    """Re-scrape nutrition for foods with missing or zero calories."""
+    import asyncio
+
+    # Find foods with no nutrition, no calories, or zero calories
+    query = {
+        '$or': [
+            {'nutrition_fetched': False},
+            {'nutrition_fetched': {'$exists': False}},
+            {'nutrition.Calories': {'$exists': False}},
+            {'nutrition.Calories': ''},
+            {'nutrition.Calories': '0'},
+            {'nutrition': {}},
+        ]
+    }
+    cursor = db.foods.find(query, {'rec_num': 1, 'name': 1, '_id': 0})
+    foods = await cursor.to_list(length=None)
+
+    fixed = 0
+    failed = 0
+    for food in foods:
+        rec_num = food['rec_num']
+        try:
+            nutrition_data = await asyncio.to_thread(get_nutrition_info, rec_num)
+            calories = nutrition_data.get('Calories', '')
+            if calories and calories != '0':
+                update = {
+                    'nutrition_fetched': True,
+                    'nutrition': {k: v for k, v in nutrition_data.items() if k not in ('ingredients', 'allergens')},
+                    'allergens': nutrition_data.get('allergens', ''),
+                    'ingredients': nutrition_data.get('ingredients', ''),
+                }
+                await db.foods.update_one({'rec_num': rec_num}, {'$set': update})
+                fixed += 1
+            else:
+                failed += 1
+        except Exception as e:
+            print(f"Backfill failed for {rec_num}: {e}")
+            failed += 1
+
+    return {'success': True, 'fixed': fixed, 'failed': failed, 'total_attempted': len(foods)}

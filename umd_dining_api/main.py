@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import jwt as pyjwt
 import os
 from dotenv import load_dotenv
 
@@ -13,6 +14,21 @@ load_dotenv()
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 ADMIN_SECRET = os.getenv('ADMIN_SECRET')
+
+
+def _rate_limit_key(request: Request) -> str:
+    """Rate limit by user ID from JWT if present, otherwise by IP."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            payload = pyjwt.decode(auth[7:], SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("user_id")
+            if user_id:
+                return f"user:{user_id}"
+        except Exception:
+            pass
+    return get_remote_address(request)
+
 
 mongo_uri = os.getenv('MONGO_URI')
 if not mongo_uri:
@@ -28,7 +44,7 @@ DINING_HALLS = {
     "16": {"name": "South Campus Diner", "location": "South Campus"},
 }
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+limiter = Limiter(key_func=_rate_limit_key, default_limits=["200 per day", "50 per hour"])
 
 
 @asynccontextmanager

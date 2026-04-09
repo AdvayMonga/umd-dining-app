@@ -317,10 +317,18 @@ def fetch_and_cache_nutrition(rec_num):
     if food and food.get("nutrition_fetched"):
         return food
 
-    nutrition_data = get_nutrition_info(rec_num)
+    try:
+        nutrition_data = get_nutrition_info(rec_num)
+    except Exception as e:
+        print(f"Nutrition scrape failed for {rec_num}: {e}")
+        return food
+
+    # Don't mark as fetched if we got empty/zero calories — retry next time
+    calories = nutrition_data.get('Calories', '')
+    has_valid_nutrition = bool(calories and calories != '0')
 
     update = {
-        "nutrition_fetched": True,
+        "nutrition_fetched": has_valid_nutrition,
         "nutrition": {k: v for k, v in nutrition_data.items() if k not in ("ingredients", "allergens")},
         "allergens": nutrition_data.get("allergens", ""),
         "ingredients": nutrition_data.get("ingredients", ""),
