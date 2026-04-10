@@ -105,6 +105,11 @@ app = FastAPI(lifespan=lifespan)
 
 app.state.limiter = limiter
 
+
+@app.get("/")
+async def health_check():
+    return {"status": "ok"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
