@@ -219,16 +219,16 @@ actor DiningAPIService {
         return (response.userId, response.token)
     }
 
-    func upgradeGuestToApple(appleUserId: String) async throws -> String {
+    func upgradeGuestToApple(appleUserId: String, identityToken: String) async throws -> String {
         let token = await AuthManager.shared.jwtToken
-        let body = ["apple_user_id": appleUserId]
+        let body = ["apple_user_id": appleUserId, "identity_token": identityToken]
         let data = try await post("\(baseURL)/auth/upgrade", body: body, token: token)
         let response = try JSONDecoder().decode(AuthResponse.self, from: data)
         return response.token
     }
 
-    func registerAppleUser(userId: String) async throws -> String {
-        let body = ["apple_user_id": userId]
+    func registerAppleUser(userId: String, identityToken: String) async throws -> String {
+        let body = ["apple_user_id": userId, "identity_token": identityToken]
         let data = try await post("\(baseURL)/auth/apple", body: body)
         let response = try JSONDecoder().decode(AuthResponse.self, from: data)
         return response.token

@@ -1,10 +1,12 @@
 import asyncio
 import hashlib
+import hmac
 import re
 import time
 import threading
 import uuid
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -12,13 +14,30 @@ import jwt as pyjwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Body
 from pydantic import BaseModel
 
+import requests as sync_requests
+
 from main import db, limiter, SECRET_KEY, ADMIN_SECRET
-from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition, get_nutrition_info
+from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition, get_nutrition_info, db as sync_db
 from ranker import rank_items
 from search_ranker import rank_search_results
 from embeddings import generate_embedding_async
 
 router = APIRouter()
+
+# --- Bounded thread pool for background nutrition fetches ---
+_nutrition_executor = ThreadPoolExecutor(max_workers=4)
+_nutrition_in_flight: set = set()
+_nutrition_lock = threading.Lock()
+
+# --- Admin job locks (prevent concurrent execution) ---
+_admin_locks = {
+    'scrape': threading.Lock(),
+    'scrape_week': threading.Lock(),
+    'embed': threading.Lock(),
+    'similar': threading.Lock(),
+    'frequency': threading.Lock(),
+    'cuisine': threading.Lock(),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +60,9 @@ async def _get_trending():
     now = time.time()
     if now < _trending_cache['expires']:
         return _trending_cache['data']
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     pipeline = [
+        {'$match': {'added_at': {'$gte': cutoff}}},
         {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
         {'$sort': {'count': -1}},
         {'$limit': 50}
@@ -60,8 +81,9 @@ async def _get_trending_searches():
     now = time.time()
     if now < _trending_searches_cache['expires']:
         return _trending_searches_cache['data']
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     pipeline = [
-        {'$match': {'result_count': {'$gt': 0}}},
+        {'$match': {'result_count': {'$gt': 0}, 'timestamp': {'$gte': cutoff}}},
         {'$group': {'_id': {'$toLower': '$query'}, 'count': {'$sum': 1}}},
         {'$sort': {'count': -1}},
         {'$limit': 10}
@@ -81,7 +103,9 @@ async def _get_global_views():
     now = time.time()
     if now < _global_views_cache['expires']:
         return _global_views_cache['data']
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     pipeline = [
+        {'$match': {'timestamp': {'$gte': cutoff}}},
         {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
         {'$sort': {'count': -1}},
         {'$limit': 100},
@@ -103,11 +127,18 @@ async def get_current_user(authorization: str = Header(default='')) -> str:
     token = authorization[7:]
     try:
         payload = pyjwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        return payload['sub']
+        user_id = payload['sub']
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail='token expired')
     except pyjwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail='invalid token')
+    exists = await db.users.find_one(
+        {'$or': [{'user_id': user_id}, {'apple_user_id': user_id}]},
+        {'_id': 1}
+    )
+    if not exists:
+        raise HTTPException(status_code=401, detail='user not found')
+    return user_id
 
 
 async def get_optional_user(authorization: str = Header(default='')) -> Optional[str]:
@@ -121,7 +152,9 @@ async def get_optional_user(authorization: str = Header(default='')) -> Optional
 
 
 async def require_admin(x_admin_key: str = Header(default='')):
-    if ADMIN_SECRET and x_admin_key != ADMIN_SECRET:
+    if not ADMIN_SECRET:
+        raise HTTPException(status_code=500, detail='server misconfigured')
+    if x_admin_key != ADMIN_SECRET:
         raise HTTPException(status_code=403, detail='unauthorized')
 
 
@@ -133,12 +166,62 @@ def _make_token(user_id: str) -> str:
     )
 
 
+# --- Apple Sign In token verification ---
+_apple_jwks_cache: dict = {'keys': None, 'expires': 0}
+
+def _get_apple_public_keys():
+    now = time.time()
+    if _apple_jwks_cache['keys'] and now < _apple_jwks_cache['expires']:
+        return _apple_jwks_cache['keys']
+    resp = sync_requests.get('https://appleid.apple.com/auth/keys', timeout=10)
+    resp.raise_for_status()
+    keys = resp.json()['keys']
+    _apple_jwks_cache.update({'keys': keys, 'expires': now + 3600})
+    return keys
+
+def _verify_apple_token(identity_token: str) -> str:
+    """Verify Apple identity token and return the subject (user ID)."""
+    from jwt.algorithms import RSAAlgorithm
+
+    try:
+        header = pyjwt.get_unverified_header(identity_token)
+    except pyjwt.DecodeError:
+        raise HTTPException(status_code=401, detail='invalid identity token')
+
+    apple_keys = _get_apple_public_keys()
+    matching = [k for k in apple_keys if k['kid'] == header.get('kid')]
+    if not matching:
+        _apple_jwks_cache['expires'] = 0
+        apple_keys = _get_apple_public_keys()
+        matching = [k for k in apple_keys if k['kid'] == header.get('kid')]
+        if not matching:
+            raise HTTPException(status_code=401, detail='unknown signing key')
+
+    public_key = RSAAlgorithm.from_jwk(matching[0])
+
+    try:
+        payload = pyjwt.decode(
+            identity_token,
+            public_key,
+            algorithms=['RS256'],
+            audience='umddining.UMD-Dining',
+            issuer='https://appleid.apple.com',
+        )
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail='apple token expired')
+    except pyjwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f'apple token invalid: {str(e)}')
+
+    return payload['sub']
+
+
 # ---------------------------------------------------------------------------
 # Pydantic models for request bodies
 # ---------------------------------------------------------------------------
 
 class AppleAuthBody(BaseModel):
-    apple_user_id: str
+    apple_user_id: str = ''
+    identity_token: str
 
 class FavoriteBody(BaseModel):
     rec_num: str
@@ -461,12 +544,10 @@ async def get_ranked_menu(
 
     # Blend cuisine centroids: full strength at 0 favs, linearly decreasing to 0.5 at 20+ favs
     if has_cuisine_prefs:
-        print(f"[DEBUG] cuisine_prefs: {user_prefs['cuisine_prefs']}")
         cuisine_docs = await db.cuisine_embeddings.find(
             {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
             {'embedding': 1, 'cuisine': 1, '_id': 0}
         ).to_list(None)
-        print(f"[DEBUG] cuisine_docs found: {len(cuisine_docs)}, cuisines: {[d.get('cuisine') for d in cuisine_docs]}")
         cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
         if cuisine_embs:
             import numpy as np
@@ -474,9 +555,6 @@ async def get_ranked_menu(
             weight = 1.0 - 0.5 * min(num_favs, 20) / 20  # 1.0 → 0.5 over 0–20 favs
             weighted = [(np.asarray(e, dtype=np.float32) * weight).tolist() for e in cuisine_embs]
             fav_embeddings = fav_embeddings + weighted
-        print(f"[DEBUG] fav_embeddings count after blend: {len(fav_embeddings)}")
-    else:
-        print(f"[DEBUG] no cuisine prefs, user_id={user_id}, prefs={user_prefs}")
 
     preferred_halls = user_prefs.get('preferred_dining_halls', []) if user_prefs else []
 
@@ -520,10 +598,12 @@ async def get_menu(
         query['dining_hall_id'] = dining_hall_id
     if date:
         query['date'] = date
+    if not query:
+        raise HTTPException(status_code=400, detail='at least one filter (date or dining_hall_id) required')
 
-    menu_entries = await db.menus.find(query, {'_id': 0}).to_list(None)
+    menu_entries = await db.menus.find(query, {'_id': 0}).to_list(5000)
     rec_nums = [entry['rec_num'] for entry in menu_entries]
-    food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0}).to_list(None)
+    food_docs = await db.foods.find({'rec_num': {'$in': rec_nums}}, {'_id': 0}).to_list(5000)
     foods = {f['rec_num']: f for f in food_docs}
 
     items = []
@@ -559,8 +639,16 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
 
     # If nutrition not fetched yet, kick off background scrape but return what we have now
     if not food.get('nutrition_fetched'):
-        import threading
-        threading.Thread(target=fetch_and_cache_nutrition, args=(rec_num,), daemon=True).start()
+        with _nutrition_lock:
+            if rec_num not in _nutrition_in_flight:
+                _nutrition_in_flight.add(rec_num)
+                def _fetch(rn=rec_num):
+                    try:
+                        fetch_and_cache_nutrition(rn)
+                    finally:
+                        with _nutrition_lock:
+                            _nutrition_in_flight.discard(rn)
+                _nutrition_executor.submit(_fetch)
 
     # Find next available date (today or future)
     from datetime import datetime as dt
@@ -908,7 +996,7 @@ async def track_item_view(
         'rec_num': body.rec_num,
         'food_name': body.food_name,
         'source': source,
-        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'timestamp': datetime.now(timezone.utc),
     })
     return {'success': True}
 
@@ -926,7 +1014,7 @@ async def track_search_query(
         'user_id': user_id,
         'query': body.query,
         'result_count': body.result_count,
-        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'timestamp': datetime.now(timezone.utc),
     })
     return {'success': True}
 
@@ -941,85 +1029,103 @@ async def scrape(
     dining_hall_id: Optional[str] = Query(default=None),
     _: None = Depends(require_admin),
 ):
+    if not _admin_locks['scrape'].acquire(blocking=False):
+        raise HTTPException(status_code=409, detail='scrape already running')
     scrape_date = date or datetime.now().strftime('%-m/%-d/%Y')
-    if dining_hall_id:
-        threading.Thread(target=scrape_dining_hall, args=(dining_hall_id, scrape_date), daemon=False).start()
-    else:
-        threading.Thread(target=scrape_all_dining_halls, args=(scrape_date,), daemon=False).start()
+    def _run():
+        try:
+            if dining_hall_id:
+                scrape_dining_hall(dining_hall_id, scrape_date)
+            else:
+                scrape_all_dining_halls(scrape_date)
+        finally:
+            _admin_locks['scrape'].release()
+    threading.Thread(target=_run, daemon=False).start()
     return {'success': True, 'date': scrape_date, 'status': 'scrape started'}
 
 
 @router.post('/api/scrape-week')
 async def scrape_week(_: None = Depends(require_admin)):
-    threading.Thread(target=scrape_full_week, daemon=False).start()
+    if not _admin_locks['scrape_week'].acquire(blocking=False):
+        raise HTTPException(status_code=409, detail='scrape-week already running')
+    def _run():
+        try:
+            scrape_full_week()
+        finally:
+            _admin_locks['scrape_week'].release()
+    threading.Thread(target=_run, daemon=False).start()
     return {'success': True, 'status': 'scrape started'}
 
 
 @router.post('/api/embed-missing')
 async def embed_missing(_: None = Depends(require_admin)):
+    if not _admin_locks['embed'].acquire(blocking=False):
+        raise HTTPException(status_code=409, detail='embedding already running')
     def _run():
-        from embeddings import generate_and_store_embedding
-        from pymongo import MongoClient
-        import time as _time
-        sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
-        sync_db = sync_client.get_default_database()
-        for food in sync_db.foods.find({'embedding': {'$exists': False}}, {'_id': 0}):
-            try:
-                generate_and_store_embedding(sync_db, food['rec_num'], food)
-                _time.sleep(0.1)
-            except Exception as e:
-                print(f"Embedding failed for {food['rec_num']}: {e}")
-        sync_client.close()
+        try:
+            from embeddings import generate_and_store_embedding
+            import time as _time
+            for food in sync_db.foods.find({'embedding': {'$exists': False}}, {'_id': 0}):
+                try:
+                    generate_and_store_embedding(sync_db, food['rec_num'], food)
+                    _time.sleep(0.1)
+                except Exception as e:
+                    print(f"Embedding failed for {food['rec_num']}: {e}")
+        finally:
+            _admin_locks['embed'].release()
     threading.Thread(target=_run, daemon=False).start()
     return {'success': True, 'status': 'embedding started in background'}
 
 
 @router.post('/api/backfill-similar')
 async def backfill_similar(_: None = Depends(require_admin)):
+    if not _admin_locks['similar'].acquire(blocking=False):
+        raise HTTPException(status_code=409, detail='backfill-similar already running')
     def _run():
-        from embeddings import backfill_all_similar
-        from pymongo import MongoClient
-        sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
-        sync_db = sync_client.get_default_database()
-        count = backfill_all_similar(sync_db)
-        print(f"Backfilled similar foods for {count} items")
-        sync_client.close()
+        try:
+            from embeddings import backfill_all_similar
+            count = backfill_all_similar(sync_db)
+            print(f"Backfilled similar foods for {count} items")
+        finally:
+            _admin_locks['similar'].release()
     threading.Thread(target=_run, daemon=False).start()
     return {'success': True, 'status': 'backfill started in background'}
 
 
 @router.post('/api/backfill-frequency')
 async def backfill_frequency(_: None = Depends(require_admin)):
+    if not _admin_locks['frequency'].acquire(blocking=False):
+        raise HTTPException(status_code=409, detail='backfill-frequency already running')
     def _run():
-        from pymongo import MongoClient, UpdateOne
-        sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
-        sync_db = sync_client.get_default_database()
+        try:
+            from pymongo import UpdateOne
+            entries = list(sync_db.menus.find({'frequency': {'$exists': False}}, {'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'date': 1, '_id': 1}))
+            ops = []
+            seen = {}
+            for entry in entries:
+                key = (entry['rec_num'], entry['station'], entry['dining_hall_id'])
+                if key not in seen:
+                    seen[key] = len(sync_db.menus.distinct('date', {
+                        'rec_num': entry['rec_num'],
+                        'station': entry['station'],
+                        'dining_hall_id': entry['dining_hall_id'],
+                    }))
+                ops.append(UpdateOne({'_id': entry['_id']}, {'$set': {'frequency': seen[key]}}))
 
-        entries = list(sync_db.menus.find({'frequency': {'$exists': False}}, {'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'date': 1, '_id': 1}))
-        ops = []
-        seen = {}
-        for entry in entries:
-            key = (entry['rec_num'], entry['station'], entry['dining_hall_id'])
-            if key not in seen:
-                seen[key] = len(sync_db.menus.distinct('date', {
-                    'rec_num': entry['rec_num'],
-                    'station': entry['station'],
-                    'dining_hall_id': entry['dining_hall_id'],
-                }))
-            ops.append(UpdateOne({'_id': entry['_id']}, {'$set': {'frequency': seen[key]}}))
-
-        if ops:
-            sync_db.menus.bulk_write(ops, ordered=False)
-        print(f"Backfilled frequency for {len(ops)} menu entries")
-        sync_client.close()
+            if ops:
+                sync_db.menus.bulk_write(ops, ordered=False)
+            print(f"Backfilled frequency for {len(ops)} menu entries")
+        finally:
+            _admin_locks['frequency'].release()
     threading.Thread(target=_run, daemon=False).start()
     return {'success': True, 'status': 'frequency backfill started in background'}
 
 
 @router.post('/api/cuisine-embeddings/generate')
 async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
+    if not _admin_locks['cuisine'].acquire(blocking=False):
+        raise HTTPException(status_code=409, detail='cuisine embedding already running')
     from embeddings import generate_embedding, compute_centroid
-    from pymongo import MongoClient
     import time as _time
 
     CUISINES = {
@@ -1033,31 +1139,31 @@ async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
         'healthy': ['Garden Salad', 'Quinoa Bowl', 'Grilled Chicken Salad', 'Fresh Fruit Cup', 'Smoothie Bowl'],
     }
 
-    sync_client = MongoClient(os.environ['MONGO_URI'], serverSelectionTimeoutMS=5000)
-    sync_db = sync_client.get_default_database()
+    def _run():
+        try:
+            results = {}
+            for cuisine, food_names in CUISINES.items():
+                embeddings = []
+                for food_name in food_names:
+                    try:
+                        emb = generate_embedding(food_name)
+                        embeddings.append(emb)
+                        _time.sleep(0.1)
+                    except Exception as e:
+                        print(f"Failed to embed {food_name}: {e}")
 
-    results = {}
-    for cuisine, food_names in CUISINES.items():
-        embeddings = []
-        for food_name in food_names:
-            try:
-                emb = generate_embedding(food_name)
-                embeddings.append(emb)
-                _time.sleep(0.1)
-            except Exception as e:
-                print(f"Failed to embed {food_name}: {e}")
-
-        if embeddings:
-            centroid = compute_centroid(embeddings)
-            sync_db.cuisine_embeddings.update_one(
-                {'cuisine': cuisine},
-                {'$set': {'cuisine': cuisine, 'embedding': centroid}},
-                upsert=True
-            )
-            results[cuisine] = len(embeddings)
-
-    sync_client.close()
-    return {'success': True, 'generated': results}
+                if embeddings:
+                    centroid = compute_centroid(embeddings)
+                    sync_db.cuisine_embeddings.update_one(
+                        {'cuisine': cuisine},
+                        {'$set': {'cuisine': cuisine, 'embedding': centroid}},
+                        upsert=True
+                    )
+                    results[cuisine] = len(embeddings)
+        finally:
+            _admin_locks['cuisine'].release()
+    threading.Thread(target=_run, daemon=False).start()
+    return {'success': True, 'status': 'cuisine embedding started in background'}
 
 
 # ---------------------------------------------------------------------------
@@ -1071,7 +1177,7 @@ async def auth_guest(request: Request):
     await db.users.insert_one({
         'user_id': guest_id,
         'is_guest': True,
-        'created_at': datetime.now().isoformat()
+        'created_at': datetime.now(timezone.utc)
     })
     return {'success': True, 'user_id': guest_id, 'token': _make_token(guest_id)}
 
@@ -1079,15 +1185,14 @@ async def auth_guest(request: Request):
 @router.post('/api/auth/apple')
 @limiter.limit("10/minute")
 async def auth_apple(request: Request, body: AppleAuthBody = Body(...)):
-    if not body.apple_user_id:
-        raise HTTPException(status_code=400, detail='apple_user_id required')
+    apple_user_id = _verify_apple_token(body.identity_token)
 
     await db.users.update_one(
-        {'apple_user_id': body.apple_user_id},
-        {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
+        {'apple_user_id': apple_user_id},
+        {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now(timezone.utc)}},
         upsert=True
     )
-    return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
+    return {'success': True, 'user_id': apple_user_id, 'token': _make_token(apple_user_id)}
 
 
 @router.post('/api/auth/upgrade')
@@ -1097,24 +1202,23 @@ async def upgrade_guest(
     body: AppleAuthBody = Body(...),
     user_id: str = Depends(get_current_user),
 ):
-    if not body.apple_user_id:
-        raise HTTPException(status_code=400, detail='apple_user_id required')
+    apple_user_id = _verify_apple_token(body.identity_token)
     if not user_id.startswith('guest_'):
         raise HTTPException(status_code=400, detail='not a guest account')
 
     await db.users.update_one(
-        {'apple_user_id': body.apple_user_id},
-        {'$setOnInsert': {'apple_user_id': body.apple_user_id, 'created_at': datetime.now().isoformat()}},
+        {'apple_user_id': apple_user_id},
+        {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now(timezone.utc)}},
         upsert=True
     )
 
     # Migrate all user data
     for coll in [db.favorites, db.station_favorites, db.preferences, db.intake]:
-        await coll.update_many({'user_id': user_id}, {'$set': {'user_id': body.apple_user_id}})
+        await coll.update_many({'user_id': user_id}, {'$set': {'user_id': apple_user_id}})
 
     await db.users.delete_one({'user_id': user_id})
 
-    return {'success': True, 'user_id': body.apple_user_id, 'token': _make_token(body.apple_user_id)}
+    return {'success': True, 'user_id': apple_user_id, 'token': _make_token(apple_user_id)}
 
 
 @router.post('/api/auth/refresh')
@@ -1125,7 +1229,7 @@ async def refresh_token(request: Request, user_id: str = Depends(get_current_use
 
 async def _archive_user_data(user_id: str):
     """Anonymize all behavioral data for ML training, then delete the identity."""
-    anon_id = 'anon_' + hashlib.sha256(user_id.encode()).hexdigest()[:16]
+    anon_id = 'anon_' + hmac.new(SECRET_KEY.encode(), user_id.encode(), hashlib.sha256).hexdigest()[:16]
 
     for coll in [db.favorites, db.station_favorites, db.preferences, db.intake, db.item_views, db.search_queries]:
         await coll.update_many({'user_id': user_id}, {'$set': {'user_id': anon_id}})

@@ -52,7 +52,12 @@ class AuthManager {
             }
         }
 
-        if let token = try? await DiningAPIService.shared.registerAppleUser(userId: userIdentifier) {
+        guard let tokenData = credential.identityToken,
+              let identityToken = String(data: tokenData, encoding: .utf8) else {
+            return
+        }
+
+        if let token = try? await DiningAPIService.shared.registerAppleUser(userId: userIdentifier, identityToken: identityToken) {
             jwtToken = token
             saveToKeychain(token, key: jwtKey)
         }
@@ -93,8 +98,13 @@ class AuthManager {
             }
         }
 
+        guard let tokenData = credential.identityToken,
+              let identityToken = String(data: tokenData, encoding: .utf8) else {
+            return
+        }
+
         do {
-            let token = try await DiningAPIService.shared.upgradeGuestToApple(appleUserId: appleUserId)
+            let token = try await DiningAPIService.shared.upgradeGuestToApple(appleUserId: appleUserId, identityToken: identityToken)
             userId = appleUserId
             isGuest = false
             jwtToken = token

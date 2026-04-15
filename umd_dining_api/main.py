@@ -35,7 +35,7 @@ if not mongo_uri:
     raise ValueError("MONGO_URI environment variable required")
 
 # Motor async client — initialized at module level, connected during lifespan
-client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000)
+client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000, maxPoolSize=20)
 db = client.get_default_database()
 
 DINING_HALLS = {
@@ -95,6 +95,15 @@ async def lifespan(app: FastAPI):
     await db.users.create_index([('user_id', 1)], unique=True)
     await db.users.create_index([('apple_user_id', 1)], sparse=True)
 
+    # TTL indexes — auto-expire old tracking data and guest accounts
+    await db.item_views.create_index([('timestamp', 1)], expireAfterSeconds=90 * 86400)
+    await db.search_queries.create_index([('timestamp', 1)], expireAfterSeconds=90 * 86400)
+    await db.users.create_index(
+        [('created_at', 1)],
+        expireAfterSeconds=7 * 86400,
+        partialFilterExpression={'is_guest': True}
+    )
+
     yield
 
     # Shutdown
@@ -113,7 +122,7 @@ async def health_check():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
