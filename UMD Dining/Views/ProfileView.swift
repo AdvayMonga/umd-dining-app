@@ -12,19 +12,17 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
     @State private var showCuisinePrefs = false
+    @State private var showAllergenPrefs = false
     @State private var scrollProxy: ScrollViewProxy?
     @State private var announcement: AnnouncementData?
 
-    private let allergenOptions = [
-        ("Contains dairy", "Dairy"),
-        ("Contains egg", "Egg"),
-        ("Contains fish", "Fish"),
-        ("Contains gluten", "Gluten"),
-        ("Contains nuts", "Nuts"),
-        ("Contains Shellfish", "Shellfish"),
-        ("Contains sesame", "Sesame"),
-        ("Contains soy", "Soy"),
-    ]
+    private var allergenSubtitle: String {
+        let dietaryCount = (preferences.vegetarian ? 1 : 0)
+            + (preferences.vegan ? 1 : 0)
+            + (preferences.halal ? 1 : 0)
+        let total = dietaryCount + preferences.allergens.count
+        return total == 0 ? "Not set" : "\(total) selected"
+    }
 
     var body: some View {
         NavigationStack {
@@ -89,7 +87,12 @@ struct ProfileView: View {
                             showCuisinePrefs = true
                         }
 
-                        // 6. Preferred Dining Halls
+                        // 6. Allergens & Dietary
+                        filterPill("Allergens & Dietary", subtitle: allergenSubtitle) {
+                            showAllergenPrefs = true
+                        }
+
+                        // 7. Preferred Dining Halls
                         sectionLabel("Preferred Dining Halls")
                         HStack(spacing: 8) {
                             centeredSelectablePill("Yahentamitsi", isOn: Binding(
@@ -115,29 +118,7 @@ struct ProfileView: View {
                             ))
                         }
 
-                        // 7. Dietary Preferences
-                        sectionLabel("Dietary Preferences")
-                        HStack(spacing: 8) {
-                            centeredSelectablePill("Vegetarian", isOn: $preferences.vegetarian)
-                            centeredSelectablePill("Vegan", isOn: $preferences.vegan)
-                            centeredSelectablePill("Halal", isOn: $preferences.halal)
-                        }
-
-                        // 8. Allergens
-                        sectionLabel("Allergens to Avoid")
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                            ForEach(allergenOptions, id: \.0) { key, label in
-                                centeredSelectablePill(label, isOn: Binding(
-                                    get: { preferences.allergens.contains(key) },
-                                    set: { on in
-                                        if on { preferences.allergens.insert(key) }
-                                        else { preferences.allergens.remove(key) }
-                                    }
-                                ))
-                            }
-                        }
-
-                        // 9. Dark mode
+                        // 8. Dark mode
                         togglePill(
                             label: isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode",
                             icon: isDarkMode ? "sun.max.fill" : "moon.fill",
@@ -168,6 +149,11 @@ struct ProfileView: View {
             .sheet(isPresented: $showCuisinePrefs) {
                 NavigationStack {
                     PalateSurveyView(onComplete: {}, isOnboarding: false)
+                }
+            }
+            .sheet(isPresented: $showAllergenPrefs) {
+                NavigationStack {
+                    AllergenSurveyView(onComplete: {})
                 }
             }
             .overlay {
