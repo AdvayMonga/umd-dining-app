@@ -19,11 +19,25 @@ class SearchViewModel {
     var recentSearches: [String] = []
     var trendingSearches: [String] = []
 
+    var filterVegetarian: Bool = false { didSet { applyFilters() } }
+    var filterVegan: Bool = false { didSet { applyFilters() } }
+    var filterHalal: Bool = false { didSet { applyFilters() } }
+
+    private var allResults: [SearchResult] = []
     private var searchTask: Task<Void, Never>?
     private static let recentsKey = "recentSearches"
 
     init() {
         recentSearches = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
+    }
+
+    private func applyFilters() {
+        results = allResults.filter { item in
+            if filterVegetarian && !item.dietaryIcons.contains(where: { $0.lowercased().contains("vegetarian") }) { return false }
+            if filterVegan && !item.dietaryIcons.contains(where: { $0.lowercased().contains("vegan") }) { return false }
+            if filterHalal && !item.dietaryIcons.contains(where: { $0.lowercased().contains("halal") }) { return false }
+            return true
+        }
     }
 
     func saveRecentSearch(_ query: String) {
@@ -53,6 +67,7 @@ class SearchViewModel {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard trimmed.count >= 2 else {
             results = []
+            allResults = []
             stationResults = []
             hasSearched = false
             return
@@ -87,7 +102,9 @@ class SearchViewModel {
 
             // Phase 1: Fast text + ingredient + personalization results
             do {
-                results = try await DiningAPIService.shared.searchFoods(query: trimmed)
+                let fetched = try await DiningAPIService.shared.searchFoods(query: trimmed)
+                allResults = fetched
+                applyFilters()
                 errorMessage = nil
                 if !results.isEmpty || !stationResults.isEmpty {
                     saveRecentSearch(trimmed)
@@ -109,7 +126,8 @@ class SearchViewModel {
             do {
                 let semanticResults = try await DiningAPIService.shared.searchFoods(query: trimmed, semantic: true)
                 guard !Task.isCancelled else { return }
-                results = semanticResults
+                allResults = semanticResults
+                applyFilters()
             } catch {
                 // Semantic failure is silent — phase 1 results remain
             }
