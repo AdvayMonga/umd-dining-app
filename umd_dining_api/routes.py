@@ -1021,6 +1021,11 @@ async def search_menu(
                 if rn in candidate_map:
                     candidate_map[rn]['embedding'] = embed_matrix[i].tolist()
 
+    # --- Resolve availability up front so the ranker can tier today's items ---
+    candidate_rec_nums = list(candidate_map.keys())
+    availability = await _resolve_availability(candidate_rec_nums) if candidate_rec_nums else {}
+    available_today_rec_nums = {rn for rn, info in availability.items() if info.get('available_today')}
+
     # --- Rank ---
     ranked = rank_search_results(
         candidates=list(candidate_map.values()),
@@ -1030,11 +1035,10 @@ async def search_menu(
         intake_counts=intake_counts,
         user_views=user_views,
         global_views=global_views,
+        available_today_rec_nums=available_today_rec_nums,
     )
 
-    # --- Location lookup (today-first, with next-available fallback) ---
-    rec_nums = [f['rec_num'] for f in ranked]
-    availability = await _resolve_availability(rec_nums) if rec_nums else {}
+    # --- Attach location info (reuses availability fetched above) ---
     for food in ranked:
         info = availability.get(food['rec_num'], {
             'available_today': False, 'station': '', 'dining_hall_id': '',

@@ -92,6 +92,7 @@ def rank_search_results(
     intake_counts=None,
     user_views=None,
     global_views=None,
+    available_today_rec_nums=None,
 ):
     """
     Score and sort search candidates.
@@ -112,6 +113,7 @@ def rank_search_results(
     intake_counts = intake_counts or {}
     user_views = user_views or {}
     global_views = global_views or {}
+    available_today_rec_nums = available_today_rec_nums or set()
 
     max_global = max(global_views.values()) if global_views else 1
 
@@ -178,5 +180,5 @@ def rank_search_results(
         }
         scored.append((total, item))
 
-    scored.sort(key=lambda x: -x[0])
+    scored.sort(key=lambda x: (0 if x[1]['rec_num'] in available_today_rec_nums else 1, -x[0]))
     return [item for _, item in scored[:50]]
