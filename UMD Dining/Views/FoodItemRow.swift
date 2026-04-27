@@ -43,15 +43,11 @@ struct FoodItemRow: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
 
-                if !item.station.isEmpty || !diningHallName.isEmpty {
-                    Text([item.station, diningHallName].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Unavailable today")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                AvailabilityLabel(
+                    availability: item.availability,
+                    fallbackStation: item.station,
+                    fallbackDiningHallName: diningHallName
+                )
 
                 if !item.dietaryIcons.isEmpty {
                     HStack(spacing: 4) {

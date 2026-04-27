@@ -199,6 +199,53 @@ class NutritionTrackerManager {
         }
     }
 
+    func updateEntry(_ entry: TrackedEntry, nutrition: [String: String], servingMultiplier: Double) {
+        guard let context = modelContext else { return }
+
+        let baseCal = TrackedEntry.parseNumeric(nutritionValue("Calories", from: nutrition))
+        let baseProtein = TrackedEntry.parseNumeric(nutritionValue("Protein", from: nutrition))
+        let baseCarbs = TrackedEntry.parseNumeric(nutritionValue("Total Carbohydrate", from: nutrition))
+        let baseFat = TrackedEntry.parseNumeric(nutritionValue("Total Fat", from: nutrition))
+
+        let oldRecNum = entry.recNum
+        let oldDate = formatDate(entry.loggedAt)
+        let oldLoggedAt = entry.loggedAt.ISO8601Format()
+
+        entry.servingMultiplier = servingMultiplier
+        entry.calories = Int(baseCal * servingMultiplier)
+        entry.proteinG = baseProtein * servingMultiplier
+        entry.carbsG = baseCarbs * servingMultiplier
+        entry.fatG = baseFat * servingMultiplier
+        try? context.save()
+
+        let recNum = entry.recNum
+        let name = entry.foodName
+        let date = formatDate(entry.loggedAt)
+        let mealPeriod = entry.mealPeriod
+        let calories = entry.calories
+        let protein = entry.proteinG
+        let carbs = entry.carbsG
+        let fat = entry.fatG
+        Task {
+            try? await DiningAPIService.shared.removeIntake(
+                recNum: oldRecNum, date: oldDate, loggedAt: oldLoggedAt
+            )
+            try? await DiningAPIService.shared.logIntake(
+                recNum: recNum, name: name, date: date,
+                mealPeriod: mealPeriod, calories: calories,
+                proteinG: protein, carbsG: carbs, fatG: fat
+            )
+        }
+    }
+
+    private func nutritionValue(_ key: String, from nutrition: [String: String]) -> String? {
+        if let v = nutrition[key] { return v }
+        let normalized = key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return nutrition.first(where: {
+            $0.key.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")) == normalized
+        })?.value
+    }
+
     func removeEntry(_ entry: TrackedEntry) {
         guard let context = modelContext else { return }
 

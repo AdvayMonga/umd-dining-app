@@ -14,6 +14,7 @@ struct MenuItem: Codable, Identifiable, Hashable, Sendable {
     let nutrition: [String: String]?
     let tag: String?
     let tags: [String]
+    let availability: AvailabilityInfo?
 
     var id: String { recNum }
 
@@ -31,6 +32,7 @@ struct MenuItem: Codable, Identifiable, Hashable, Sendable {
         case nutrition
         case tag
         case tags
+        case availability
     }
 
     init(from decoder: Decoder) throws {
@@ -48,5 +50,6 @@ struct MenuItem: Codable, Identifiable, Hashable, Sendable {
         nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition)
         tag = try container.decodeIfPresent(String.self, forKey: .tag)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        availability = try container.decodeIfPresent(AvailabilityInfo.self, forKey: .availability)
     }
 }
