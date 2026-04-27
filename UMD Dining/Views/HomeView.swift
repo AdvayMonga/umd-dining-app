@@ -24,9 +24,6 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     header
                     mealPicker
-                    if !viewModel.filtersMatchDefaults {
-                        activeFilterChips
-                    }
                     TabView(selection: $viewModel.selectedMealPeriod) {
                         ForEach(viewModel.availableMealPeriods, id: \.self) { period in
                             content
@@ -123,10 +120,18 @@ struct HomeView: View {
             }
 
             Button { withAnimation(.easeInOut(duration: 0.3)) { showFilter = true } } label: {
-                Image(systemName: viewModel.filtersMatchDefaults ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                Image(systemName: "line.3.horizontal.decrease")
                     .font(.title2)
                     .foregroundStyle(Color.umdRed)
                     .frame(width: 44, height: 44)
+                    .overlay(alignment: .topTrailing) {
+                        if !viewModel.filtersMatchDefaults {
+                            Circle()
+                                .fill(Color.umdRed)
+                                .frame(width: 8, height: 8)
+                                .offset(x: -4, y: 4)
+                        }
+                    }
             }
         }
         .padding(.horizontal)
@@ -158,64 +163,6 @@ struct HomeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
-    }
-
-    private var activeFilterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                if viewModel.filterVegetarian {
-                    activeChip("Vegetarian") {
-                        viewModel.filterVegetarian = false
-                        Task { await viewModel.loadMenus() }
-                    }
-                }
-                if viewModel.filterVegan {
-                    activeChip("Vegan") {
-                        viewModel.filterVegan = false
-                        Task { await viewModel.loadMenus() }
-                    }
-                }
-                if viewModel.filterHalal {
-                    activeChip("Halal") {
-                        viewModel.filterHalal = false
-                        Task { await viewModel.loadMenus() }
-                    }
-                }
-                if viewModel.filterHighProtein {
-                    activeChip("High Protein") {
-                        viewModel.filterHighProtein = false
-                        Task { await viewModel.loadMenus() }
-                    }
-                }
-                ForEach(viewModel.filterAllergens.sorted(), id: \.self) { allergen in
-                    activeChip("No \(allergen.replacingOccurrences(of: "Contains ", with: "").capitalized)") {
-                        viewModel.filterAllergens.remove(allergen)
-                        Task { await viewModel.loadMenus() }
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 10)
-        }
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
-    private func activeChip(_ label: String, onRemove: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .fontWeight(.semibold)
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.umdRed)
-        .clipShape(Capsule())
-        .sensoryFeedback(.selection, trigger: label)
     }
 
     @ViewBuilder

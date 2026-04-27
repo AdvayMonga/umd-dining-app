@@ -22,12 +22,26 @@ class SearchViewModel {
     var filterVegetarian: Bool = false { didSet { applyFilters() } }
     var filterVegan: Bool = false { didSet { applyFilters() } }
     var filterHalal: Bool = false { didSet { applyFilters() } }
+    var filterAllergens: Set<String> = [] { didSet { applyFilters() } }
+
+    var filtersMatchDefaults: Bool {
+        let prefs = UserPreferences.shared
+        return filterVegetarian == prefs.vegetarian
+            && filterVegan == prefs.vegan
+            && filterHalal == prefs.halal
+            && filterAllergens == prefs.allergens
+    }
 
     private var allResults: [SearchResult] = []
     private var searchTask: Task<Void, Never>?
     private static let recentsKey = "recentSearches"
 
     init() {
+        let prefs = UserPreferences.shared
+        filterVegetarian = prefs.vegetarian
+        filterVegan = prefs.vegan
+        filterHalal = prefs.halal
+        filterAllergens = prefs.allergens
         recentSearches = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
     }
 
@@ -36,6 +50,10 @@ class SearchViewModel {
             if filterVegetarian && !item.dietaryIcons.contains(where: { $0.lowercased().contains("vegetarian") }) { return false }
             if filterVegan && !item.dietaryIcons.contains(where: { $0.lowercased().contains("vegan") }) { return false }
             if filterHalal && !item.dietaryIcons.contains(where: { $0.lowercased().contains("halal") }) { return false }
+            for allergen in filterAllergens {
+                let keyword = allergen.lowercased().replacingOccurrences(of: "contains ", with: "")
+                if item.allergens.lowercased().contains(keyword) { return false }
+            }
             return true
         }
     }

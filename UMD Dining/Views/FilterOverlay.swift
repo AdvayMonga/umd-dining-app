@@ -11,6 +11,7 @@ struct FilterOverlay: View {
     @Binding var filterHighProtein: Bool
     @Binding var filterAllergens: Set<String>
 
+    var showDiningHalls: Bool = true
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var showSaved = false
@@ -31,7 +32,7 @@ struct FilterOverlay: View {
             ScrollView {
                 VStack(spacing: 16) {
                     // --- Dining Halls ---
-                    sectionCard("Dining Halls") {
+                    if showDiningHalls { sectionCard("Dining Halls") {
                         ForEach(allHallIds, id: \.self) { hallId in
                             let name = hallNames[hallId] ?? hallId
                             selectablePill(name, isOn: Binding(
@@ -60,7 +61,7 @@ struct FilterOverlay: View {
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(.systemGray4), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
-                    }
+                    } }
 
                     // --- Dietary Preferences ---
                     sectionCard("Dietary Preferences") {
