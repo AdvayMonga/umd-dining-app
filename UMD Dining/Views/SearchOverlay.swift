@@ -14,6 +14,19 @@ struct SearchOverlay: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Dietary filter chips — always visible
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        filterChip("Vegetarian", isOn: $viewModel.filterVegetarian)
+                        filterChip("Vegan", isOn: $viewModel.filterVegan)
+                        filterChip("Halal Friendly", isOn: $viewModel.filterHalal)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                }
+                .background(Color(.systemBackground))
+                .overlay(alignment: .bottom) { Divider() }
+
                 if viewModel.isLoading && viewModel.stationResults.isEmpty {
                     Spacer()
                     ProgressView("Searching...")
@@ -268,12 +281,14 @@ struct SearchOverlay: View {
                                         }
                                         .matchedTransitionSource(id: "search-\(item.recNum)", in: namespace)
                                         .buttonStyle(.plain)
+                                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
                                     }
                                 }
                             }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.results.map(\.id))
                     }
                     .background(Color(.systemGroupedBackground))
                 }
@@ -292,6 +307,33 @@ struct SearchOverlay: View {
                 }
             }
         }
+    }
+
+    private func filterChip(_ label: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isOn.wrappedValue.toggle()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark")
+                    .font(.caption2.weight(.bold))
+                    .scaleEffect(isOn.wrappedValue ? 1 : 0.1)
+                    .opacity(isOn.wrappedValue ? 1 : 0)
+                    .frame(width: isOn.wrappedValue ? nil : 0)
+                    .clipped()
+                Text(label)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+            }
+            .foregroundStyle(isOn.wrappedValue ? .white : .primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isOn.wrappedValue ? Color.umdRed : Color(.systemGray5))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
     }
 }
 
