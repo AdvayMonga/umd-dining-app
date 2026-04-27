@@ -50,6 +50,105 @@ def _ensure_string(value, field_name='field'):
     return value
 
 
+def _today_str() -> str:
+    return datetime.now().strftime('%-m/%-d/%Y')
+
+
+async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> dict:
+    """For each rec_num, return today's location if available, else next-day location
+    within the 7-day window, else mark unavailable_this_week.
+
+    Returns: {rec_num: {available_today, station, dining_hall_id, dining_hall_name,
+                        next_available_date, unavailable_this_week}}
+    """
+    if not rec_nums:
+        return {}
+    today = today or _today_str()
+
+    today_entries = await db.menus.find(
+        {'rec_num': {'$in': rec_nums}, 'date': today},
+        {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1}
+    ).to_list(None)
+    today_loc = {}
+    for e in today_entries:
+        rn = e['rec_num']
+        if rn not in today_loc:
+            today_loc[rn] = e
+
+    missing = [rn for rn in rec_nums if rn not in today_loc]
+    next_loc = {}
+    if missing:
+        future_entries = await db.menus.find(
+            {'rec_num': {'$in': missing}},
+            {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'date': 1}
+        ).to_list(None)
+        try:
+            today_dt = datetime.strptime(today, '%m/%d/%Y').date()
+        except ValueError:
+            today_dt = datetime.now().date()
+        for e in future_entries:
+            try:
+                d = datetime.strptime(e['date'], '%m/%d/%Y').date()
+            except ValueError:
+                continue
+            if d < today_dt:
+                continue
+            rn = e['rec_num']
+            cur = next_loc.get(rn)
+            if cur is None or d < cur['_d']:
+                next_loc[rn] = {**e, '_d': d}
+
+    hall_ids = set()
+    for e in today_loc.values():
+        if e.get('dining_hall_id'):
+            hall_ids.add(e['dining_hall_id'])
+    for e in next_loc.values():
+        if e.get('dining_hall_id'):
+            hall_ids.add(e['dining_hall_id'])
+
+    hall_names = {}
+    if hall_ids:
+        hall_docs = await db.dining_halls.find(
+            {'hall_id': {'$in': list(hall_ids)}}, {'_id': 0, 'hall_id': 1, 'name': 1}
+        ).to_list(None)
+        hall_names = {d['hall_id']: d['name'] for d in hall_docs}
+
+    result = {}
+    for rn in rec_nums:
+        if rn in today_loc:
+            e = today_loc[rn]
+            hid = e.get('dining_hall_id', '')
+            result[rn] = {
+                'available_today': True,
+                'station': e.get('station', ''),
+                'dining_hall_id': hid,
+                'dining_hall_name': hall_names.get(hid, ''),
+                'next_available_date': None,
+                'unavailable_this_week': False,
+            }
+        elif rn in next_loc:
+            e = next_loc[rn]
+            hid = e.get('dining_hall_id', '')
+            result[rn] = {
+                'available_today': False,
+                'station': e.get('station', ''),
+                'dining_hall_id': hid,
+                'dining_hall_name': hall_names.get(hid, ''),
+                'next_available_date': e.get('date'),
+                'unavailable_this_week': False,
+            }
+        else:
+            result[rn] = {
+                'available_today': False,
+                'station': '',
+                'dining_hall_id': '',
+                'dining_hall_name': '',
+                'next_available_date': None,
+                'unavailable_this_week': True,
+            }
+    return result
+
+
 # --- Trending cache (global, 5-min TTL) ---
 _trending_cache: dict = {'data': set(), 'expires': 0}
 
@@ -669,6 +768,8 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
     menu_entry = await db.menus.find_one({'rec_num': rec_num}, {'dietary_icons': 1, '_id': 0})
     dietary_icons = menu_entry.get('dietary_icons', []) if menu_entry else []
 
+    availability = (await _resolve_availability([rec_num])).get(rec_num)
+
     return {
         'success': True,
         'data': {
@@ -679,6 +780,7 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
             'ingredients': food.get('ingredients', ''),
             'next_available': next_available,
             'dietary_icons': dietary_icons,
+            'availability': availability,
         }
     }
 
@@ -718,26 +820,19 @@ async def get_similar_foods(
     ).to_list(None)
     food_map = {f['rec_num']: f for f in food_docs}
 
-    # Look up station/dining hall from most recent menu entries
+    # Today-first availability
+    availability = await _resolve_availability(similar_rec_nums)
+
+    # Pull dietary_icons / meal_period from any recent entry (most-recent-wins) for display
     menu_entries = await db.menus.find(
         {'rec_num': {'$in': similar_rec_nums}},
-        {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'dietary_icons': 1,
-         'date': 1, 'meal_period': 1}
+        {'_id': 0, 'rec_num': 1, 'dietary_icons': 1, 'date': 1, 'meal_period': 1}
     ).sort('date', -1).to_list(None)
-
-    hall_names = {}
-    location_map = {}
+    extras = {}
     for entry in menu_entries:
         rn = entry['rec_num']
-        if rn not in location_map:
-            hall_id = entry.get('dining_hall_id', '')
-            if hall_id and hall_id not in hall_names:
-                hall_doc = await db.dining_halls.find_one({'hall_id': hall_id}, {'_id': 0, 'name': 1})
-                hall_names[hall_id] = hall_doc['name'] if hall_doc else ''
-            location_map[rn] = {
-                'station': entry.get('station', ''),
-                'dining_hall_id': hall_id,
-                'dining_hall_name': hall_names.get(hall_id, ''),
+        if rn not in extras:
+            extras[rn] = {
                 'dietary_icons': entry.get('dietary_icons', []),
                 'date': entry.get('date', ''),
                 'meal_period': entry.get('meal_period', ''),
@@ -746,15 +841,21 @@ async def get_similar_foods(
     data = []
     for rn in similar_rec_nums:
         f = food_map.get(rn, {})
-        loc = location_map.get(rn, {})
+        info = availability.get(rn, {
+            'available_today': False, 'station': '', 'dining_hall_id': '',
+            'dining_hall_name': '', 'next_available_date': None, 'unavailable_this_week': True,
+        })
+        ex = extras.get(rn, {})
         data.append({
             'name': f.get('name', ''),
             'rec_num': rn,
-            'station': loc.get('station', ''),
-            'dining_hall_id': loc.get('dining_hall_id', ''),
-            'date': loc.get('date', ''),
-            'meal_period': loc.get('meal_period', ''),
-            'dietary_icons': loc.get('dietary_icons', []),
+            'station': info['station'],
+            'dining_hall_id': info['dining_hall_id'],
+            'dining_hall_name': info['dining_hall_name'],
+            'availability': info,
+            'date': ex.get('date', ''),
+            'meal_period': ex.get('meal_period', ''),
+            'dietary_icons': ex.get('dietary_icons', []),
             'nutrition': f.get('nutrition', {}),
             'nutrition_fetched': f.get('nutrition_fetched', False),
             'allergens': f.get('allergens', ''),
@@ -931,44 +1032,32 @@ async def search_menu(
         global_views=global_views,
     )
 
-    # --- Location lookup (batch hall names) ---
+    # --- Location lookup (today-first, with next-available fallback) ---
     rec_nums = [f['rec_num'] for f in ranked]
-    if rec_nums:
-        menu_entries = await db.menus.find(
-            {'rec_num': {'$in': rec_nums}},
-            {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1}
-        ).sort('date', -1).to_list(None)
-
-        hall_ids = {e.get('dining_hall_id', '') for e in menu_entries} - {''}
-        hall_names = {}
-        if hall_ids:
-            hall_docs = await db.dining_halls.find(
-                {'hall_id': {'$in': list(hall_ids)}}, {'_id': 0, 'hall_id': 1, 'name': 1}
-            ).to_list(None)
-            hall_names = {d['hall_id']: d['name'] for d in hall_docs}
-
-        location_map = {}
-        for entry in menu_entries:
-            rn = entry['rec_num']
-            if rn not in location_map:
-                hall_id = entry.get('dining_hall_id', '')
-                location_map[rn] = {
-                    'station': entry.get('station', ''),
-                    'dining_hall_id': hall_id,
-                    'dining_hall_name': hall_names.get(hall_id, ''),
-                }
-        for food in ranked:
-            loc = location_map.get(food['rec_num'], {})
-            food['station'] = loc.get('station', '')
-            food['dining_hall_id'] = loc.get('dining_hall_id', '')
-            food['dining_hall_name'] = loc.get('dining_hall_name', '')
-    else:
-        for food in ranked:
-            food['station'] = ''
-            food['dining_hall_id'] = ''
-            food['dining_hall_name'] = ''
+    availability = await _resolve_availability(rec_nums) if rec_nums else {}
+    for food in ranked:
+        info = availability.get(food['rec_num'], {
+            'available_today': False, 'station': '', 'dining_hall_id': '',
+            'dining_hall_name': '', 'next_available_date': None, 'unavailable_this_week': True,
+        })
+        food['station'] = info['station']
+        food['dining_hall_id'] = info['dining_hall_id']
+        food['dining_hall_name'] = info['dining_hall_name']
+        food['availability'] = info
 
     return {'success': True, 'query': q, 'count': len(ranked), 'has_semantic': has_semantic, 'data': ranked}
+
+
+@router.get('/api/availability')
+@limiter.limit("30/minute")
+async def get_availability(request: Request, rec_nums: str = Query(default='')):
+    if not rec_nums:
+        return {'success': True, 'data': {}}
+    parts = [p.strip() for p in rec_nums.split(',') if p.strip()]
+    if len(parts) > 200:
+        raise HTTPException(status_code=400, detail='too many rec_nums (max 200)')
+    data = await _resolve_availability(parts)
+    return {'success': True, 'data': data}
 
 
 @router.get('/api/trending-searches')

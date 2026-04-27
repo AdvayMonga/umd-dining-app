@@ -3,6 +3,8 @@ import SwiftUI
 struct FavoritesView: View {
     @Environment(FavoritesManager.self) private var favorites
     @State private var searchText = ""
+    @State private var availability: [String: AvailabilityInfo] = [:]
+    @State private var lastFetchedRecNums: Set<String> = []
 
     private var filteredFoods: [(recNum: String, name: String)] {
         let sorted = favorites.sortedFoods
@@ -38,9 +40,14 @@ struct FavoritesView: View {
                             ForEach(filteredFoods, id: \.recNum) { recNum, name in
                                 NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name, source: "favorites")) {
                                     HStack {
-                                        Text(name)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.primary)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(name)
+                                                .font(.subheadline)
+                                                .foregroundStyle(.primary)
+                                            if let info = availability[recNum] {
+                                                AvailabilityLabel(availability: info)
+                                            }
+                                        }
                                         Spacer()
                                         Image(systemName: "chevron.right")
                                             .font(.caption)
@@ -96,6 +103,26 @@ struct FavoritesView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Favorites")
         .searchable(text: $searchText, prompt: "Search favorites")
+        .task(id: favorites.sortedFoods.map { $0.recNum }) {
+            await loadAvailability()
+        }
+    }
+
+    private func loadAvailability() async {
+        let recNums = Set(favorites.sortedFoods.map { $0.recNum })
+        guard !recNums.isEmpty else {
+            availability = [:]
+            lastFetchedRecNums = []
+            return
+        }
+        if recNums == lastFetchedRecNums { return }
+        do {
+            let result = try await DiningAPIService.shared.fetchAvailability(recNums: Array(recNums))
+            availability = result
+            lastFetchedRecNums = recNums
+        } catch {
+            // silent fail — leaves rows without label
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {
