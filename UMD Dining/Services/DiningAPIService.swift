@@ -211,6 +211,19 @@ actor DiningAPIService {
         return response.data
     }
 
+    func fetchAvailability(recNums: [String]) async throws -> [String: AvailabilityInfo] {
+        guard !recNums.isEmpty else { return [:] }
+        let joined = recNums.joined(separator: ",")
+        let encoded = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
+        let data = try await fetch("\(baseURL)/availability?rec_nums=\(encoded)")
+        struct AvailabilityResponse: Decodable {
+            let success: Bool
+            let data: [String: AvailabilityInfo]
+        }
+        let response = try JSONDecoder().decode(AvailabilityResponse.self, from: data)
+        return response.data
+    }
+
     // MARK: - Auth
 
     func registerGuest() async throws -> (userId: String, token: String) {

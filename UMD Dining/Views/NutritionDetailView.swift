@@ -176,25 +176,14 @@ struct NutritionDetailView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
-                        if station != nil || diningHallName != nil {
-                            HStack(spacing: 4) {
-                                Image(systemName: "mappin.and.ellipse")
-                                    .font(.caption)
-                                    .foregroundStyle(Color.umdRed)
-                                Text([station, diningHallName].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color.umdRed)
-                            }
-                        } else {
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar")
-                                    .font(.caption)
-                                    .foregroundStyle(Color.umdRed)
-                                Text(availabilityText(info))
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color.umdRed)
-                            }
-                        }
+                        AvailabilityLabel(
+                            availability: info.availability,
+                            fallbackStation: station ?? "",
+                            fallbackDiningHallName: diningHallName ?? "",
+                            font: .subheadline,
+                            iconFont: .caption,
+                            forceColor: Color.umdRed
+                        )
                     }
                     Spacer()
                     if let cal = calories {
@@ -322,9 +311,11 @@ struct NutritionDetailView: View {
     ]
 
     private var isAvailableToday: Bool {
+        if let a = viewModel.nutritionInfo?.availability {
+            return a.availableToday
+        }
         // If opened from a station on today's menu, it's available
         if station != nil { return true }
-        // Otherwise check nextAvailable from nutrition info
         guard let info = viewModel.nutritionInfo,
               let nextDate = info.nextAvailable else { return false }
         let formatter = DateFormatter()

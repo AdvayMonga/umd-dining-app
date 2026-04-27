@@ -8,6 +8,7 @@ struct NutritionInfo: Decodable, Sendable {
     let nutrition: [String: String]
     let nextAvailable: String?
     let dietaryIcons: [String]
+    let availability: AvailabilityInfo?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -17,6 +18,7 @@ struct NutritionInfo: Decodable, Sendable {
         case nutrition
         case nextAvailable = "next_available"
         case dietaryIcons = "dietary_icons"
+        case availability
     }
 
     init(from decoder: Decoder) throws {
@@ -28,5 +30,6 @@ struct NutritionInfo: Decodable, Sendable {
         nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition) ?? [:]
         nextAvailable = try container.decodeIfPresent(String.self, forKey: .nextAvailable)
         dietaryIcons = try container.decodeIfPresent([String].self, forKey: .dietaryIcons) ?? []
+        availability = try container.decodeIfPresent(AvailabilityInfo.self, forKey: .availability)
     }
 }

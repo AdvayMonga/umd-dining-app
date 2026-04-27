@@ -285,16 +285,16 @@ struct SearchOverlay: View {
                                         ) {
                                             HStack(spacing: 12) {
                                                 VStack(alignment: .leading, spacing: 4) {
-                                                    Text(item.name).font(.body).fontWeight(.semibold).foregroundStyle(.primary)
-                                                    if !item.station.isEmpty || !item.diningHallName.isEmpty {
-                                                        HStack(spacing: 4) {
-                                                            Image(systemName: "mappin.and.ellipse").font(.caption).foregroundStyle(Color.umdRed)
-                                                            Text([item.station, item.diningHallName].filter { !$0.isEmpty }.joined(separator: " · "))
-                                                                .font(.caption).foregroundStyle(.secondary)
-                                                        }
-                                                    } else {
-                                                        Text("Unavailable today").font(.caption).foregroundStyle(.secondary)
-                                                    }
+                                                    Text(item.name)
+                                                        .font(.body)
+                                                        .fontWeight(.semibold)
+                                                        .foregroundStyle(.primary)
+
+                                                    AvailabilityLabel(
+                                                        availability: item.availability,
+                                                        fallbackStation: item.station,
+                                                        fallbackDiningHallName: item.diningHallName
+                                                    )
                                                 }
                                                 Spacer()
                                                 Button {

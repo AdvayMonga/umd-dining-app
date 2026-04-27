@@ -14,6 +14,12 @@ struct TrackerView: View {
     @State private var hasAppeared = false
     @Namespace private var namespace
 
+    // Edit serving picker state
+    @State private var editingEntry: TrackedEntry?
+    @State private var editNutrition: [String: String] = [:]
+    @State private var editServingCount: Double = 1.0
+    @State private var editLoadingRecNum: String?
+
     // Display values that drive chart animations (animate between these)
     @State private var displayCalorieValue: Int = 0
     @State private var displayProteinValue: Double = 0
@@ -78,6 +84,28 @@ struct TrackerView: View {
             if showClearConfirm {
                 clearConfirmOverlay
             }
+        }
+        .fullScreenCover(item: $editingEntry) { entry in
+            ServingPickerSheet(
+                foodName: entry.foodName,
+                nutrition: editNutrition,
+                servingCount: $editServingCount,
+                onLog: {
+                    tracker.setModelContext(modelContext)
+                    tracker.updateEntry(entry, nutrition: editNutrition,
+                                        servingMultiplier: editServingCount)
+                    loadEntries()
+                    withAnimation(.easeOut(duration: 0.5)) {
+                        displayCalorieValue = totalCalories
+                        displayProteinValue = totalProtein
+                        displayCarbsValue = totalCarbs
+                        displayFatValue = totalFat
+                    }
+                    editingEntry = nil
+                },
+                onCancel: { editingEntry = nil }
+            )
+            .presentationBackground(.clear)
         }
         .onAppear {
             tracker.setModelContext(modelContext)
@@ -395,14 +423,31 @@ struct TrackerView: View {
 
             Spacer()
 
-            Button {
-                removeEntry(entry)
-            } label: {
-                Image(systemName: "minus.circle")
-                    .foregroundStyle(Color.umdRed)
-                    .font(.title3)
+            HStack(spacing: 12) {
+                Button {
+                    beginEdit(entry)
+                } label: {
+                    if editLoadingRecNum == entry.recNum {
+                        ProgressView().scaleEffect(0.7)
+                            .frame(width: 22, height: 22)
+                    } else {
+                        Image(systemName: "pencil.circle")
+                            .foregroundStyle(Color.umdRed)
+                            .font(.title3)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(editLoadingRecNum != nil)
+
+                Button {
+                    removeEntry(entry)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(Color.umdRed)
+                        .font(.title3)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -477,6 +522,22 @@ struct TrackerView: View {
 
     private func loadEntries() {
         entries = tracker.entries(for: selectedDate)
+    }
+
+    private func beginEdit(_ entry: TrackedEntry) {
+        editLoadingRecNum = entry.recNum
+        Task {
+            var info = await NutritionCache.shared.get(entry.recNum)
+            if info == nil {
+                info = try? await DiningAPIService.shared.fetchNutrition(recNum: entry.recNum)
+                if let info { await NutritionCache.shared.set(entry.recNum, info) }
+            }
+            editLoadingRecNum = nil
+            guard let info else { return }
+            editNutrition = info.nutrition
+            editServingCount = entry.servingMultiplier > 0 ? entry.servingMultiplier : 1.0
+            editingEntry = entry
+        }
     }
 
     private func removeEntry(_ entry: TrackedEntry) {
