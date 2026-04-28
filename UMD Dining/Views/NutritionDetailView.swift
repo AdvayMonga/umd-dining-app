@@ -219,36 +219,17 @@ struct NutritionDetailView: View {
                     nutritionTable(info.nutrition)
                 }
 
-                // Dietary Info & Allergens
-                let allergenIcons = info.dietaryIcons.filter { DietaryStyles.isAllergen($0) }
-                let lifestyleIcons = info.dietaryIcons.filter { !DietaryStyles.isAllergen($0) }
+                // Allergens and Dietary (combined)
+                if !info.dietaryIcons.isEmpty {
+                    let allergenIcons = info.dietaryIcons.filter { DietaryStyles.isAllergen($0) }
+                    let lifestyleIcons = info.dietaryIcons.filter { !DietaryStyles.isAllergen($0) }
+                    let combinedIcons = allergenIcons + lifestyleIcons
 
-                if !lifestyleIcons.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Dietary")
+                        Text("Allergens and Dietary")
                             .font(.headline)
                         FlowLayout(spacing: 6) {
-                            ForEach(lifestyleIcons, id: \.self) { icon in
-                                Text(DietaryStyles.dietaryLabel(for: icon))
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(DietaryStyles.dietaryColor(for: icon).opacity(0.15))
-                                    .foregroundStyle(DietaryStyles.dietaryColor(for: icon))
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-
-                if !allergenIcons.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Allergens")
-                            .font(.headline)
-                        FlowLayout(spacing: 6) {
-                            ForEach(allergenIcons, id: \.self) { icon in
+                            ForEach(combinedIcons, id: \.self) { icon in
                                 Text(DietaryStyles.dietaryLabel(for: icon))
                                     .font(.caption)
                                     .fontWeight(.medium)
@@ -325,7 +306,7 @@ struct NutritionDetailView: View {
     }
 
     private var similarFoodsLabel: String {
-        isAvailableToday ? "Similar Foods" : "Similar Foods Available Today"
+        "Similar Foods"
     }
 
     private var similarFoodsSection: some View {
