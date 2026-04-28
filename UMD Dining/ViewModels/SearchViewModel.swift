@@ -19,17 +19,14 @@ class SearchViewModel {
     var recentSearches: [String] = []
     var trendingSearches: [String] = []
 
+    // Temp, session-only filters — intentionally NOT loaded from UserPreferences.
     var filterVegetarian: Bool = false { didSet { applyFilters() } }
     var filterVegan: Bool = false { didSet { applyFilters() } }
     var filterHalal: Bool = false { didSet { applyFilters() } }
     var filterAllergens: Set<String> = [] { didSet { applyFilters() } }
 
     var filtersMatchDefaults: Bool {
-        let prefs = UserPreferences.shared
-        return filterVegetarian == prefs.vegetarian
-            && filterVegan == prefs.vegan
-            && filterHalal == prefs.halal
-            && filterAllergens == prefs.allergens
+        !filterVegetarian && !filterVegan && !filterHalal && filterAllergens.isEmpty
     }
 
     private var allResults: [SearchResult] = []
@@ -37,22 +34,16 @@ class SearchViewModel {
     private static let recentsKey = "recentSearches"
 
     init() {
-        let prefs = UserPreferences.shared
-        filterVegetarian = prefs.vegetarian
-        filterVegan = prefs.vegan
-        filterHalal = prefs.halal
-        filterAllergens = prefs.allergens
         recentSearches = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
     }
 
     private func applyFilters() {
         results = allResults.filter { item in
-            if filterVegetarian && !item.dietaryIcons.contains(where: { $0.lowercased().contains("vegetarian") }) { return false }
-            if filterVegan && !item.dietaryIcons.contains(where: { $0.lowercased().contains("vegan") }) { return false }
-            if filterHalal && !item.dietaryIcons.contains(where: { $0.lowercased().contains("halal") }) { return false }
+            if filterVegetarian && !item.dietaryIcons.contains("vegetarian") { return false }
+            if filterVegan && !item.dietaryIcons.contains("vegan") { return false }
+            if filterHalal && !item.dietaryIcons.contains("HalalFriendly") { return false }
             for allergen in filterAllergens {
-                let keyword = allergen.lowercased().replacingOccurrences(of: "contains ", with: "")
-                if item.allergens.lowercased().contains(keyword) { return false }
+                if item.dietaryIcons.contains(allergen) { return false }
             }
             return true
         }

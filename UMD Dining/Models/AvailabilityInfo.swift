@@ -52,7 +52,8 @@ struct AvailabilityInfo: Codable, Hashable, Sendable {
     }()
 
     private var locationText: String {
-        let parts = [station, diningHallName].filter { !$0.isEmpty }
+        let shortHall = diningHallName.replacingOccurrences(of: " Dining Hall", with: "")
+        let parts = [station, shortHall].filter { !$0.isEmpty }
         return parts.joined(separator: " · ")
     }
 

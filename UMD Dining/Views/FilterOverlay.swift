@@ -12,6 +12,7 @@ struct FilterOverlay: View {
     @Binding var filterAllergens: Set<String>
 
     var showDiningHalls: Bool = true
+    var showSaveDefaults: Bool = true
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var showSaved = false
@@ -93,6 +94,7 @@ struct FilterOverlay: View {
                     }
 
                     // Set as Defaults
+                    if showSaveDefaults {
                     Button {
                         let prefs = UserPreferences.shared
                         prefs.vegetarian = filterVegetarian
@@ -134,6 +136,7 @@ struct FilterOverlay: View {
                         .contentTransition(.interpolate)
                     }
                     .buttonStyle(.plain)
+                    }
 
                     Spacer().frame(height: 40)
                 }

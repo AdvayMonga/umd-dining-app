@@ -186,9 +186,9 @@ struct HomeView: View {
         } else if viewModel.displayRows.isEmpty {
             Spacer()
             ContentUnavailableView(
-                "No Items",
+                "No Menu Available",
                 systemImage: "fork.knife",
-                description: Text("No menu items available for this meal period.")
+                description: Text("Try another date or meal period.")
             )
             Spacer()
         } else {
