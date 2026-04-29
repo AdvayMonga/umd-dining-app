@@ -11,12 +11,17 @@ private struct StationNavData: Hashable {
 
 struct HomeView: View {
     @Binding var tabResetID: UUID
-    @State private var viewModel = HomeViewModel()
+    @State private var viewModel: HomeViewModel
     @State private var showSearch = false
     @State private var showFilter = false
     @State private var selectedItem: MenuItem?
     @State private var selectedStation: StationNavData?
     @Namespace private var namespace
+
+    init(tabResetID: Binding<UUID>, initialHallId: String) {
+        self._tabResetID = tabResetID
+        self._viewModel = State(initialValue: HomeViewModel(selectedHallId: initialHallId))
+    }
 
     var body: some View {
         ZStack {
@@ -61,9 +66,6 @@ struct HomeView: View {
             // Filter overlay
             if showFilter {
                 FilterOverlay(
-                    selectedHallIds: $viewModel.selectedHallIds,
-                    hallNames: viewModel.diningHallNames,
-                    allHallIds: viewModel.allHallIds,
                     filterVegetarian: $viewModel.filterVegetarian,
                     filterVegan: $viewModel.filterVegan,
                     filterHalal: $viewModel.filterHalal,
@@ -103,10 +105,32 @@ struct HomeView: View {
 
     private var header: some View {
         HStack {
-            Text("UMD Dining")
-                .font(.title)
-                .fontWeight(.regular)
-                .foregroundStyle(Color.umdRed)
+            Menu {
+                ForEach(viewModel.allHallIds, id: \.self) { id in
+                    Button {
+                        viewModel.selectedHallId = id
+                        viewModel.showDiscovery = false
+                    } label: {
+                        if id == viewModel.selectedHallId {
+                            Label(viewModel.diningHallName(for: id), systemImage: "checkmark")
+                        } else {
+                            Text(viewModel.diningHallName(for: id))
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(viewModel.diningHallName(for: viewModel.selectedHallId))
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.umdRed)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.umdRed)
+                }
+            }
 
             Spacer()
 
@@ -255,7 +279,7 @@ struct HomeView: View {
 }
 
 #Preview {
-    HomeView(tabResetID: .constant(UUID()))
+    HomeView(tabResetID: .constant(UUID()), initialHallId: "19")
         .environment(FavoritesManager.shared)
         .environment(NutritionTrackerManager.shared)
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])

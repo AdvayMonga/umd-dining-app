@@ -11,6 +11,7 @@ struct UMD_DiningApp: App {
     @AppStorage("hasCompletedPalateSurvey") private var hasCompletedSurvey = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var hasCheckedCredential = false
+    @State private var selectedHallId: String? = nil
 
     var body: some Scene {
         WindowGroup {
@@ -21,8 +22,8 @@ struct UMD_DiningApp: App {
                         UserDefaults.standard.set(false, forKey: "hasCompletedTutorial")
                     }
                     .preferredColorScheme(isDarkMode ? .dark : .light)
-                } else {
-                    ContentView()
+                } else if let hallId = selectedHallId {
+                    ContentView(initialHallId: hallId)
                         .preferredColorScheme(isDarkMode ? .dark : .light)
                         .environment(authManager)
                         .environment(favoritesManager)
@@ -32,6 +33,9 @@ struct UMD_DiningApp: App {
                             await UserPreferences.shared.syncFromServer()
                         }
                         .onChange(of: scenePhase) {
+                            if scenePhase == .background {
+                                selectedHallId = nil
+                            }
                             if scenePhase == .active && !hasCheckedCredential {
                                 hasCheckedCredential = true
                                 Task {
@@ -40,6 +44,13 @@ struct UMD_DiningApp: App {
                                 }
                             }
                         }
+                } else {
+                    DiningHallPickerView(
+                        userName: authManager.displayName ?? "",
+                        selectedHallId: nil,
+                        onSelect: { id in selectedHallId = id }
+                    )
+                    .preferredColorScheme(isDarkMode ? .dark : .light)
                 }
             } else {
                 SignInView()
