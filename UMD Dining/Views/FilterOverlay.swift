@@ -1,18 +1,12 @@
 import SwiftUI
 
 struct FilterOverlay: View {
-    @Binding var selectedHallIds: Set<String>
-    let hallNames: [String: String]
-    let allHallIds: [String]
-
     @Binding var filterVegetarian: Bool
     @Binding var filterVegan: Bool
     @Binding var filterHalal: Bool
     @Binding var filterHighProtein: Bool
     @Binding var filterAllergens: Set<String>
 
-    var showDiningHalls: Bool = true
-    var showSaveDefaults: Bool = true
     var onDismiss: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var showSaved = false
@@ -32,38 +26,6 @@ struct FilterOverlay: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    // --- Dining Halls ---
-                    if showDiningHalls { sectionCard("Dining Halls") {
-                        ForEach(allHallIds, id: \.self) { hallId in
-                            let name = hallNames[hallId] ?? hallId
-                            selectablePill(name, isOn: Binding(
-                                get: { selectedHallIds.contains(hallId) },
-                                set: { isOn in
-                                    if isOn {
-                                        selectedHallIds.insert(hallId)
-                                    } else if selectedHallIds.count > 1 {
-                                        selectedHallIds.remove(hallId)
-                                    }
-                                }
-                            ))
-                        }
-
-                        Button {
-                            selectedHallIds = Set(allHallIds)
-                        } label: {
-                            Text("Select All")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(.systemGray4), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    } }
-
                     // --- Dietary Preferences ---
                     sectionCard("Dietary Preferences") {
                         selectablePill("Vegetarian", isOn: $filterVegetarian)
@@ -94,14 +56,12 @@ struct FilterOverlay: View {
                     }
 
                     // Set as Defaults
-                    if showSaveDefaults {
                     Button {
                         let prefs = UserPreferences.shared
                         prefs.vegetarian = filterVegetarian
                         prefs.vegan = filterVegan
                         prefs.halal = filterHalal
                         prefs.allergens = filterAllergens
-                        prefs.preferredDiningHalls = selectedHallIds
 
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showSaved = true
@@ -136,7 +96,6 @@ struct FilterOverlay: View {
                         .contentTransition(.interpolate)
                     }
                     .buttonStyle(.plain)
-                    }
 
                     Spacer().frame(height: 40)
                 }
@@ -202,9 +161,6 @@ struct FilterOverlay: View {
 
 #Preview {
     FilterOverlay(
-        selectedHallIds: .constant(Set(["19", "51", "16"])),
-        hallNames: ["19": "Yahentamitsi", "51": "251 North", "16": "South Campus Diner"],
-        allHallIds: ["19", "51", "16"],
         filterVegetarian: .constant(false),
         filterVegan: .constant(false),
         filterHalal: .constant(false),

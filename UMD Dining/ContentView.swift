@@ -2,6 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
+    let initialHallId: String
+
     @Environment(\.modelContext) private var modelContext
     @Environment(NutritionTrackerManager.self) private var tracker
     @State private var selectedTab = 0
@@ -24,7 +26,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             TabView(selection: tabBinding) {
-                HomeView(tabResetID: $tabResetID)
+                HomeView(tabResetID: $tabResetID, initialHallId: initialHallId)
                     .tabItem {
                         Label("Home", systemImage: "fork.knife")
                     }
@@ -59,7 +61,7 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(initialHallId: "19")
         .environment(FavoritesManager.shared)
         .environment(NutritionTrackerManager.shared)
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])

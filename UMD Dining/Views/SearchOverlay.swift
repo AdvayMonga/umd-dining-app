@@ -325,16 +325,11 @@ struct SearchOverlay: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showSearchFilter) {
                 FilterOverlay(
-                    selectedHallIds: .constant([]),
-                    hallNames: [:],
-                    allHallIds: [],
                     filterVegetarian: $viewModel.filterVegetarian,
                     filterVegan: $viewModel.filterVegan,
                     filterHalal: $viewModel.filterHalal,
                     filterHighProtein: .constant(false),
                     filterAllergens: $viewModel.filterAllergens,
-                    showDiningHalls: false,
-                    showSaveDefaults: false,
                     onDismiss: { showSearchFilter = false }
                 )
             }

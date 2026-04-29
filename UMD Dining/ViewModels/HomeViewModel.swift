@@ -28,7 +28,7 @@ class HomeViewModel {
         }
         return .now
     }()
-    var selectedHallIds: Set<String> = ["19", "51", "16"]
+    var selectedHallId: String
 
     let diningHallNames: [String: String] = [
         "19": "Yahentamitsi",
@@ -37,6 +37,10 @@ class HomeViewModel {
     ]
 
     let allHallIds = ["19", "51", "16"]
+
+    init(selectedHallId: String) {
+        self.selectedHallId = selectedHallId
+    }
     let mealPeriods = ["Breakfast", "Brunch", "Lunch", "Dinner"]
 
     // Temporary session-only filters — defaults loaded from profile prefs
@@ -73,7 +77,8 @@ class HomeViewModel {
     private var loadedFavStations: Set<String> = []
 
     var availableMealPeriods: [String] {
-        let available = Set(allItems.map(\.mealPeriod))
+        let hallItems = allItems.filter { $0.diningHallId == selectedHallId }
+        let available = Set(hallItems.map(\.mealPeriod))
         let weekday = Calendar.current.component(.weekday, from: selectedDate)
         let isWeekend = weekday == 1 || weekday == 7
         return mealPeriods.filter { period in
@@ -87,11 +92,11 @@ class HomeViewModel {
         // Filter by meal + hall (dietary/allergen filtering is done server-side)
         let filtered = allItems.filter { item in
             item.mealPeriod == selectedMealPeriod
-            && selectedHallIds.contains(item.diningHallId)
+            && item.diningHallId == selectedHallId
         }
         // Minimal filter: meal + hall only (discovery previews)
         let minimalFiltered = allItems.filter {
-            $0.mealPeriod == selectedMealPeriod && selectedHallIds.contains($0.diningHallId)
+            $0.mealPeriod == selectedMealPeriod && $0.diningHallId == selectedHallId
         }
 
         // --- Build 20-item selected pool (prioritized) ---
