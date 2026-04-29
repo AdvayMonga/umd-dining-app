@@ -4,6 +4,8 @@ DerivedData/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+**/*.xcuserstate
+xcuserdata/
 
 # Claude Code
 .claude/
