@@ -28,13 +28,17 @@ struct UMD_DiningApp: App {
                         .environment(authManager)
                         .environment(favoritesManager)
                         .environment(trackerManager)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 1.04, anchor: .center)),
+                            removal: .opacity
+                        ))
                         .task {
                             await favoritesManager.syncFromServer()
                             await UserPreferences.shared.syncFromServer()
                         }
                         .onChange(of: scenePhase) {
                             if scenePhase == .background {
-                                selectedHallId = nil
+                                withAnimation(.easeInOut(duration: 0.3)) { selectedHallId = nil }
                             }
                             if scenePhase == .active && !hasCheckedCredential {
                                 hasCheckedCredential = true
@@ -48,9 +52,12 @@ struct UMD_DiningApp: App {
                     DiningHallPickerView(
                         userName: authManager.displayName ?? "",
                         selectedHallId: nil,
-                        onSelect: { id in selectedHallId = id }
+                        onSelect: { id in
+                            withAnimation(.easeInOut(duration: 0.35)) { selectedHallId = id }
+                        }
                     )
                     .preferredColorScheme(isDarkMode ? .dark : .light)
+                    .transition(.opacity)
                 }
             } else {
                 SignInView()

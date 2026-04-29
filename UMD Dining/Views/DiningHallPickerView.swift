@@ -81,7 +81,7 @@ struct DiningHallCard: View {
     }
 
     private var statusText: String {
-        if status.isOpen, let meal = status.currentMeal, let close = status.closeTime {
+        if status.isOpen, let close = status.dayCloseTime, let meal = status.currentMeal {
             return "Open until \(close) · \(meal)"
         } else if let nextTime = status.nextOpenTime {
             return "Opens at \(nextTime)"
@@ -94,20 +94,15 @@ struct DiningHallCard: View {
         Button(action: onTap) {
             GeometryReader { geo in
                 ZStack {
-                    // Image pinned to imageAlignment; extra height ensures no gap on crop
-                    ZStack(alignment: imageAlignment) {
-                        Color(.systemGray4)
-                            .frame(width: geo.size.width, height: geo.size.height)
-                        Image("hall_\(hallId)")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(
-                                width: geo.size.width,
-                                height: imageAlignment == .center ? geo.size.height : geo.size.height + 300
-                            )
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
+                    Color(.systemGray4)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .overlay(alignment: imageAlignment) {
+                            Image("hall_\(hallId)")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geo.size.width)
+                        }
+                        .clipped()
 
                     // Gradient scrim at bottom for text legibility
                     VStack(spacing: 0) {
@@ -120,17 +115,17 @@ struct DiningHallCard: View {
                         .frame(height: min(geo.size.height * 0.55, 90))
                     }
 
-                    // Top-right: OPEN / CLOSED badge
+                    // Top-right: OPEN / CLOSING SOON / CLOSED badge
                     VStack {
                         HStack {
                             Spacer()
-                            Text(status.isOpen ? "OPEN" : "CLOSED")
+                            Text(status.isClosingSoon ? "CLOSING SOON" : status.isOpen ? "OPEN" : "CLOSED")
                                 .font(.caption2)
                                 .fontWeight(.bold)
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 5)
-                                .background(status.isOpen ? Color.green : Color.red.opacity(0.9))
+                                .background(status.isClosingSoon ? Color.orange : status.isOpen ? Color.green : Color.red.opacity(0.9))
                                 .clipShape(Capsule())
                         }
                         .padding(10)
@@ -159,6 +154,7 @@ struct DiningHallCard: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
     }
