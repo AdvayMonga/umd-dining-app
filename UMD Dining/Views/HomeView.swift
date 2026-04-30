@@ -44,14 +44,7 @@ struct HomeView: View {
                     header
                     weekStrip
                     mealPicker
-                    TabView(selection: $viewModel.selectedMealPeriod) {
-                        ForEach(viewModel.availableMealPeriods, id: \.self) { period in
-                            content
-                                .tag(period)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.easeInOut(duration: 0.25), value: viewModel.selectedMealPeriod)
+                    content
                 }
                 .background(Color.umdBackground)
                 .navigationDestination(item: $selectedItem) { item in
@@ -220,7 +213,7 @@ struct HomeView: View {
             ForEach(viewModel.availableMealPeriods, id: \.self) { period in
                 let isSelected = viewModel.selectedMealPeriod == period
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         viewModel.selectedMealPeriod = period
                     }
                 } label: {
@@ -405,9 +398,11 @@ struct HomeView: View {
             )
             Spacer()
         } else {
-            ScrollView {
-                hallCard
-                LazyVStack(spacing: 12) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Color.clear.frame(height: 0).id("feedTop")
+                    hallCard
+                    LazyVStack(spacing: 12) {
                         ForEach(viewModel.displayRows) { row in
                             switch row {
                             case .stationHeader(let station, let hallId, _):
@@ -450,14 +445,22 @@ struct HomeView: View {
                                     onTap: { selectedItem = item }
                                 )
                                 .matchedTransitionSource(id: item.recNum, in: namespace)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                         }
                     }
+                    .id(viewModel.selectedMealPeriod)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
+                }
+                .refreshable { await viewModel.forceReloadMenus() }
+                .onChange(of: viewModel.selectedMealPeriod) {
+                    // Scroll instantly (no animation) so it doesn't fight the content transition
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) { proxy.scrollTo("feedTop", anchor: .top) }
+                }
             }
-            .refreshable { await viewModel.forceReloadMenus() }
         }
     }
 }
