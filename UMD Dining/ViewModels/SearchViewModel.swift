@@ -23,10 +23,12 @@ class SearchViewModel {
     var filterVegetarian: Bool = false { didSet { applyFilters() } }
     var filterVegan: Bool = false { didSet { applyFilters() } }
     var filterHalal: Bool = false { didSet { applyFilters() } }
+    var filterGlutenFree: Bool = false { didSet { applyFilters() } }
+    var filterDairyFree: Bool = false { didSet { applyFilters() } }
     var filterAllergens: Set<String> = [] { didSet { applyFilters() } }
 
     var filtersMatchDefaults: Bool {
-        !filterVegetarian && !filterVegan && !filterHalal && filterAllergens.isEmpty
+        !filterVegetarian && !filterVegan && !filterHalal && !filterGlutenFree && !filterDairyFree && filterAllergens.isEmpty
     }
 
     private var allResults: [SearchResult] = []
@@ -38,11 +40,14 @@ class SearchViewModel {
     }
 
     private func applyFilters() {
+        var effectiveAllergens = filterAllergens
+        if filterGlutenFree { effectiveAllergens.insert("Contains gluten") }
+        if filterDairyFree { effectiveAllergens.insert("Contains dairy") }
         results = allResults.filter { item in
             if filterVegetarian && !item.dietaryIcons.contains("vegetarian") { return false }
             if filterVegan && !item.dietaryIcons.contains("vegan") { return false }
             if filterHalal && !item.dietaryIcons.contains("HalalFriendly") { return false }
-            for allergen in filterAllergens {
+            for allergen in effectiveAllergens {
                 if item.dietaryIcons.contains(allergen) { return false }
             }
             return true

@@ -328,6 +328,8 @@ struct SearchOverlay: View {
                     filterVegetarian: $viewModel.filterVegetarian,
                     filterVegan: $viewModel.filterVegan,
                     filterHalal: $viewModel.filterHalal,
+                    filterGlutenFree: $viewModel.filterGlutenFree,
+                    filterDairyFree: $viewModel.filterDairyFree,
                     filterHighProtein: .constant(false),
                     filterAllergens: $viewModel.filterAllergens,
                     onDismiss: { showSearchFilter = false }
