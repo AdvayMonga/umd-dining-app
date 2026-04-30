@@ -119,18 +119,18 @@ struct HomeView: View {
             Spacer()
 
             Button { showFilter = true } label: {
-                ZStack {
-                    if activeFilterCount > 0 {
-                        Circle()
-                            .fill(Color.umdRed)
-                            .frame(width: 8, height: 8)
-                            .offset(x: 6, y: -6)
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.umdRed)
+                    .frame(width: 36, height: 36)
+                    .overlay(alignment: .topTrailing) {
+                        if activeFilterCount > 0 {
+                            Circle()
+                                .fill(Color.umdRed)
+                                .frame(width: 8, height: 8)
+                                .offset(x: -2, y: 2)
+                        }
                     }
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(Color.umdRed)
-                        .frame(width: 36, height: 36)
-                }
             }
             .buttonStyle(.plain)
             .animation(.easeInOut(duration: 0.2), value: activeFilterCount)

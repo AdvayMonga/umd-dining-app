@@ -12,7 +12,8 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
     @State private var showCuisinePrefs = false
-    @State private var showAllergenPrefs = false
+    @State private var showDietaryPrefs = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         NavigationStack {
@@ -46,7 +47,7 @@ struct ProfileView: View {
                                     print("Upgrade failed: \(error.localizedDescription)")
                                 }
                             }
-                            .signInWithAppleButtonStyle(.black)
+                            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                             .frame(width: 220, height: 38)
                             .clipShape(RoundedRectangle(cornerRadius: 19))
                             .disabled(isUpgrading)
@@ -60,9 +61,9 @@ struct ProfileView: View {
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 7)
-                            .background(Color(.systemBackground))
+                            .background(Color(.secondarySystemGroupedBackground))
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color(.systemGray4), lineWidth: 1))
+                            .overlay(Capsule().stroke(Color(.systemGray3), lineWidth: 1.5))
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -73,7 +74,7 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         sectionLabel("PREFERENCES")
 
-                        // Cuisine Preferences — individual card
+                        // Cuisine Preferences
                         itemCard {
                             HStack(spacing: 14) {
                                 Image(systemName: "fork.knife")
@@ -94,7 +95,7 @@ struct ProfileView: View {
                             showCuisinePrefs = true
                         }
 
-                        // Allergens & Dietary Needs — individual card
+                        // Allergens & Dietary Needs
                         itemCard {
                             HStack(spacing: 14) {
                                 Image(systemName: "exclamationmark.triangle")
@@ -112,19 +113,17 @@ struct ProfileView: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 16)
                         } action: {
-                            showAllergenPrefs = true
+                            showDietaryPrefs = true
                         }
                     }
                     .padding(.horizontal, 16)
 
-                    // Larger gap before APP SETTINGS
-                    Spacer().frame(height: 28)
+                    Spacer().frame(height: 36)
 
                     // APP SETTINGS section
                     VStack(alignment: .leading, spacing: 8) {
                         sectionLabel("APP SETTINGS")
 
-                        // Dark Mode — full row toggles
                         itemCard {
                             HStack(spacing: 14) {
                                 Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
@@ -145,7 +144,6 @@ struct ProfileView: View {
                             isDarkMode.toggle()
                         }
 
-                        // Privacy Policy
                         itemCard {
                             HStack(spacing: 14) {
                                 Image(systemName: "lock.shield")
@@ -168,7 +166,6 @@ struct ProfileView: View {
                             }
                         }
 
-                        // App Feedback
                         itemCard {
                             HStack(spacing: 14) {
                                 Image(systemName: "message")
@@ -195,23 +192,24 @@ struct ProfileView: View {
 
                     Spacer().frame(height: 24)
 
-                    // Logout button
-                    Button { showSignOutAlert = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.body.weight(.bold))
-                            Text("Logout")
-                                .font(.body.weight(.bold))
+                    if !AuthManager.shared.isGuest {
+                        Button { showSignOutAlert = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .font(.body.weight(.bold))
+                                Text("Logout")
+                                    .font(.body.weight(.bold))
+                            }
+                            .foregroundStyle(Color.umdRed)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.umdRed, lineWidth: 1.5))
                         }
-                        .foregroundStyle(Color.umdRed)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(Color(.systemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.umdRed, lineWidth: 1.5))
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 16)
 
                     Spacer().frame(height: 16)
 
@@ -232,10 +230,8 @@ struct ProfileView: View {
                     PalateSurveyView(onComplete: {}, isOnboarding: false)
                 }
             }
-            .sheet(isPresented: $showAllergenPrefs) {
-                NavigationStack {
-                    AllergenSurveyView(onComplete: {})
-                }
+            .sheet(isPresented: $showDietaryPrefs) {
+                DietaryPrefsSheet(preferences: preferences)
             }
             .overlay {
                 if isUpgrading {
@@ -380,6 +376,175 @@ struct ProfileView: View {
             .shadow(radius: 20)
             .padding(.horizontal, 40)
         }
+    }
+}
+
+// MARK: - Dietary Prefs Sheet
+
+private struct DietaryPrefsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var preferences: UserPreferences
+
+    private let allergenOptions: [(label: String, key: String)] = [
+        ("Dairy",     "Contains dairy"),
+        ("Egg",       "Contains egg"),
+        ("Fish",      "Contains fish"),
+        ("Gluten",    "Contains gluten"),
+        ("Nuts",      "Contains nuts"),
+        ("Shellfish", "Contains Shellfish"),
+        ("Sesame",    "Contains sesame"),
+        ("Soy",       "Contains soy"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    filterSection(title: "Dietary Preferences", icon: "leaf.fill", iconColor: Color.umdRed) {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            dietaryPill("Vegetarian",     isOn: $preferences.vegetarian)
+                            dietaryPill("Vegan",          isOn: $preferences.vegan)
+                            dietaryPill("Halal Friendly", isOn: $preferences.halal)
+                            dietaryPill("Gluten Free",    isOn: $preferences.glutenFree)
+                            dietaryPill("Dairy Free",     isOn: $preferences.dairyFree)
+                        }
+                    }
+
+                    Divider()
+
+                    filterSection(
+                        title: "Allergens to Avoid",
+                        icon: "exclamationmark.triangle.fill",
+                        iconColor: Color(red: 180/255, green: 83/255, blue: 9/255),
+                        subtitle: "Items containing these ingredients will be hidden from your menu."
+                    ) {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(allergenOptions, id: \.key) { option in
+                                allergenPill(option.label, key: option.key)
+                            }
+                        }
+                    }
+
+                    // Safety advisory
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundStyle(Color(.systemGray3))
+                            .font(.system(size: 18))
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Dining Safety")
+                                .font(.inter(size: 13, weight: .semibold))
+                                .foregroundStyle(.primary)
+                            Text("Maryland Dining does not guarantee allergen-free preparation. Cross-contamination may occur. Consult dining staff if you have a severe allergy.")
+                                .font(.inter(size: 12, weight: .regular))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(.systemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdBorder, lineWidth: 1))
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
+            }
+            .background(Color(.systemBackground))
+            .navigationTitle("Allergens & Dietary Needs")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+    }
+
+    private func filterSection<Content: View>(
+        title: String, icon: String, iconColor: Color,
+        subtitle: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                Text(title.uppercased())
+                    .font(.inter(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .kerning(0.5)
+            }
+            if let subtitle {
+                Text(subtitle)
+                    .font(.inter(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, -6)
+            }
+            content()
+        }
+    }
+
+    private func dietaryPill(_ label: String, isOn: Binding<Bool>) -> some View {
+        Button { isOn.wrappedValue.toggle() } label: {
+            HStack {
+                Text(label)
+                    .font(.inter(size: 14, weight: .medium))
+                    .foregroundStyle(isOn.wrappedValue ? Color.umdRed : .primary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer()
+                if isOn.wrappedValue {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.umdRed)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(isOn.wrappedValue ? Color.umdRed.opacity(0.08) : Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(isOn.wrappedValue ? Color.umdRed : Color.umdBorder,
+                        lineWidth: isOn.wrappedValue ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isOn.wrappedValue)
+    }
+
+    private func allergenPill(_ label: String, key: String) -> some View {
+        let isOn = preferences.allergens.contains(key)
+        let color = Color(red: 180/255, green: 83/255, blue: 9/255)
+        return Button {
+            if isOn { preferences.allergens.remove(key) }
+            else { preferences.allergens.insert(key) }
+        } label: {
+            HStack {
+                Text(label)
+                    .font(.inter(size: 14, weight: .medium))
+                    .foregroundStyle(isOn ? color : .primary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer()
+                if isOn {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(color)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(isOn ? color.opacity(0.08) : Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(isOn ? color : Color.umdBorder, lineWidth: isOn ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isOn)
     }
 }
 

@@ -78,7 +78,7 @@ struct FilterOverlay: View {
                 .padding(.top, 16)
                 .padding(.bottom, 100) // space for sticky button
             }
-            .background(Color.umdBackground)
+            .background(Color(.systemBackground))
             .navigationTitle("Filter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -97,13 +97,21 @@ struct FilterOverlay: View {
                     }
                     .disabled(activeFilterCount == 0)
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { onDismiss?() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
+            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
             .overlay(alignment: .bottom) {
                 applyButton
             }
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
     }
 
     // MARK: - Apply Button
@@ -127,7 +135,7 @@ struct FilterOverlay: View {
         .padding(.bottom, 24)
         .background(
             LinearGradient(
-                colors: [Color.umdBackground.opacity(0), Color.umdBackground],
+                colors: [Color(.systemBackground).opacity(0), Color(.systemBackground)],
                 startPoint: .top,
                 endPoint: .bottom
             )

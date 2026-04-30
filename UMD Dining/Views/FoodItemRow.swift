@@ -8,6 +8,7 @@ struct FoodItemRow: View {
     @Environment(FavoritesManager.self) private var favorites
     @Environment(NutritionTrackerManager.self) private var tracker
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isAdding = false
     @State private var showAdded = false
     @State private var showServingPicker = false
@@ -60,7 +61,10 @@ struct FoodItemRow: View {
         .padding(.horizontal, 16)
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.25), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+            Color.umdRed.opacity(colorScheme == .dark ? 0.6 : 0.25),
+            lineWidth: colorScheme == .dark ? 1.5 : 1
+        ))
         .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
         .overlay {
             if showHeartAnimation {

@@ -21,7 +21,7 @@ struct SearchOverlay: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Custom search bar row
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
@@ -45,16 +45,16 @@ struct SearchOverlay: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     Button { showSearchFilter = true } label: {
-                        Image(systemName: "line.3.horizontal.decrease")
-                            .font(.title2)
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Color.umdRed)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 36, height: 36)
                             .overlay(alignment: .topTrailing) {
                                 if !viewModel.filtersMatchDefaults {
                                     Circle()
                                         .fill(Color.umdRed)
                                         .frame(width: 8, height: 8)
-                                        .offset(x: -4, y: 4)
+                                        .offset(x: -2, y: 2)
                                 }
                             }
                     }
@@ -63,12 +63,12 @@ struct SearchOverlay: View {
                         if let onDismiss { onDismiss() } else { dismiss() }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.title2)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 36, height: 36)
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Color(.systemBackground))
 
