@@ -451,7 +451,7 @@ struct HomeView: View {
                     .id(viewModel.selectedMealPeriod)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 90)
                 }
                 .refreshable { await viewModel.forceReloadMenus() }
                 .onChange(of: viewModel.selectedMealPeriod) {

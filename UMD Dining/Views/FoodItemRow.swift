@@ -32,13 +32,13 @@ struct FoodItemRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.name)
                     .font(.inter(size: 16, weight: .bold))
-                    .foregroundStyle(Color(red: 17/255, green: 24/255, blue: 39/255))
+                    .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let cal = displayCalories {
                     Text("\(cal) CAL")
                         .font(.inter(size: 12, weight: .medium))
-                        .foregroundStyle(Color(red: 107/255, green: 114/255, blue: 128/255))
+                        .foregroundStyle(.secondary)
                         .kerning(0.3)
                 } else {
                     Text(" ")
@@ -58,7 +58,7 @@ struct FoodItemRow: View {
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .background(Color.white)
+        .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdRed.opacity(0.25), lineWidth: 1))
         .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
@@ -132,13 +132,13 @@ struct FoodItemRow: View {
                 }
                 if highProtein {
                     tagPill(text: "HIGH PROTEIN",
-                            textColor: Color(red: 55/255, green: 65/255, blue: 81/255),
-                            bgColor: Color(red: 243/255, green: 244/255, blue: 246/255))
+                            textColor: Color(.secondaryLabel),
+                            bgColor: Color(.systemGray5))
                 }
                 ForEach(allergenTags, id: \.self) { icon in
                     tagPill(text: DietaryStyles.allergenAbbrev(for: icon),
-                            textColor: Color(red: 55/255, green: 65/255, blue: 81/255),
-                            bgColor: Color(red: 243/255, green: 244/255, blue: 246/255))
+                            textColor: Color(.secondaryLabel),
+                            bgColor: Color(.systemGray5))
                 }
             }
         }
@@ -189,7 +189,7 @@ struct FoodItemRow: View {
                     .frame(width: 36, height: 36)
                 Image(systemName: favorites.isFavorite(recNum: item.recNum) ? "heart.fill" : "heart")
                     .font(.system(size: 14))
-                    .foregroundStyle(favorites.isFavorite(recNum: item.recNum) ? Color.umdRed : Color(red: 107/255, green: 114/255, blue: 128/255))
+                    .foregroundStyle(favorites.isFavorite(recNum: item.recNum) ? Color.umdRed : Color(.systemGray3))
             }
         }
         .buttonStyle(.plain)
