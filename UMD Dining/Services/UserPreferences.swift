@@ -14,6 +14,12 @@ class UserPreferences {
     var halal: Bool {
         didSet { saveLocally(); syncToServer() }
     }
+    var glutenFree: Bool {
+        didSet { saveLocally(); syncToServer() }
+    }
+    var dairyFree: Bool {
+        didSet { saveLocally(); syncToServer() }
+    }
     var allergens: Set<String> {
         didSet { saveLocally(); syncToServer() }
     }
@@ -27,6 +33,8 @@ class UserPreferences {
     private let vegetarianKey = "pref_vegetarian"
     private let veganKey = "pref_vegan"
     private let halalKey = "pref_halal"
+    private let glutenFreeKey = "pref_gluten_free"
+    private let dairyFreeKey = "pref_dairy_free"
     private let allergensKey = "pref_allergens"
     private let cuisinePrefsKey = "pref_cuisine_prefs"
     private let diningHallsKey = "pref_dining_halls"
@@ -35,6 +43,8 @@ class UserPreferences {
         self.vegetarian = UserDefaults.standard.bool(forKey: "pref_vegetarian")
         self.vegan = UserDefaults.standard.bool(forKey: "pref_vegan")
         self.halal = UserDefaults.standard.bool(forKey: "pref_halal")
+        self.glutenFree = UserDefaults.standard.bool(forKey: "pref_gluten_free")
+        self.dairyFree = UserDefaults.standard.bool(forKey: "pref_dairy_free")
         let stored = UserDefaults.standard.stringArray(forKey: "pref_allergens") ?? []
         self.allergens = Set(stored)
         self.cuisinePrefs = UserDefaults.standard.stringArray(forKey: "pref_cuisine_prefs") ?? []
@@ -79,6 +89,8 @@ class UserPreferences {
         vegetarian = false
         vegan = false
         halal = false
+        glutenFree = false
+        dairyFree = false
         allergens = []
         cuisinePrefs = []
         preferredDiningHalls = []
@@ -94,6 +106,8 @@ class UserPreferences {
         UserDefaults.standard.set(vegetarian, forKey: vegetarianKey)
         UserDefaults.standard.set(vegan, forKey: veganKey)
         UserDefaults.standard.set(halal, forKey: halalKey)
+        UserDefaults.standard.set(glutenFree, forKey: glutenFreeKey)
+        UserDefaults.standard.set(dairyFree, forKey: dairyFreeKey)
         UserDefaults.standard.set(Array(allergens), forKey: allergensKey)
         UserDefaults.standard.set(cuisinePrefs, forKey: cuisinePrefsKey)
         UserDefaults.standard.set(Array(preferredDiningHalls), forKey: diningHallsKey)
