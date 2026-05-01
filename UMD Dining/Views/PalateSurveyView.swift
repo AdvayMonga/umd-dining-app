@@ -3,9 +3,29 @@ import SwiftUI
 struct CuisineOption: Identifiable {
     let id: String
     let label: String
-    let icon: String
     let description: String
 }
+
+struct CuisineCategory: Identifiable {
+    let id = UUID()
+    let title: String
+    let options: [CuisineOption]
+}
+
+private let cuisineCategories: [CuisineCategory] = [
+    CuisineCategory(title: "Global Palette", options: [
+        CuisineOption(id: "asian",         label: "Asian",               description: "Stir fry, rice bowls, noodles"),
+        CuisineOption(id: "mexican",       label: "Mexican/Latin",       description: "Burritos, tacos, quesadillas"),
+        CuisineOption(id: "italian",       label: "Italian/Mediterranean", description: "Pasta, pizza, salads"),
+        CuisineOption(id: "indian",        label: "Indian",              description: "Curry, tikka, biryani"),
+    ]),
+    CuisineCategory(title: "Comfort & Classic", options: [
+        CuisineOption(id: "comfort",   label: "American/Comfort", description: "Burgers, fries, mac & cheese"),
+        CuisineOption(id: "southern",  label: "Southern/Soul",    description: "Fried chicken, cornbread, BBQ"),
+        CuisineOption(id: "breakfast", label: "Breakfast/Brunch", description: "Pancakes, eggs, waffles"),
+        CuisineOption(id: "healthy",   label: "Healthy/Fresh",    description: "Salads, grain bowls, smoothies"),
+    ]),
+]
 
 struct PalateSurveyView: View {
     var onComplete: () -> Void
@@ -14,18 +34,112 @@ struct PalateSurveyView: View {
     @State private var selected: Set<String> = []
     @State private var showNextScreen = false
 
-    private let cuisines: [CuisineOption] = [
-        CuisineOption(id: "comfort", label: "American/Comfort", icon: "🍔", description: "Burgers, fries, mac & cheese"),
-        CuisineOption(id: "asian", label: "Asian", icon: "🍜", description: "Stir fry, rice bowls, noodles"),
-        CuisineOption(id: "mexican", label: "Mexican/Latin", icon: "🌮", description: "Burritos, tacos, quesadillas"),
-        CuisineOption(id: "italian", label: "Italian/Mediterranean", icon: "🍝", description: "Pasta, pizza, salads"),
-        CuisineOption(id: "indian", label: "Indian", icon: "🍛", description: "Curry, tikka, biryani"),
-        CuisineOption(id: "southern", label: "Southern/Soul", icon: "🍗", description: "Fried chicken, cornbread, BBQ"),
-        CuisineOption(id: "breakfast", label: "Breakfast/Brunch", icon: "🥞", description: "Pancakes, eggs, waffles"),
-        CuisineOption(id: "healthy", label: "Healthy/Fresh", icon: "🥗", description: "Salads, grain bowls, smoothies"),
-    ]
-
     var body: some View {
+        if isOnboarding {
+            onboardingLayout
+        } else {
+            profileLayout
+        }
+    }
+
+    // MARK: - Profile layout (nav-pushed page)
+
+    private var profileLayout: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                headerImage
+
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(cuisineCategories) { category in
+                        categorySection(category)
+                    }
+                    applyButton
+                        .padding(.top, 8)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 24)
+            }
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.umdRed)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                Spacer()
+                Text("Cuisine Preferences")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Color.clear.frame(width: 44, height: 44)
+                    .padding(.trailing, 8)
+            }
+            .frame(height: 44)
+            .background(Color(.systemBackground))
+            .overlay(alignment: .bottom) { Divider() }
+        }
+        .onAppear {
+            selected = Set(UserPreferences.shared.cuisinePrefs)
+        }
+    }
+
+    // MARK: - Header image
+
+    private var headerImage: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [Color(red: 0.13, green: 0.07, blue: 0.07), Color(red: 0.35, green: 0.10, blue: 0.10)],
+                startPoint: .topTrailing,
+                endPoint: .bottomLeading
+            )
+            .overlay {
+                ZStack {
+                    Circle()
+                        .fill(Color.umdRed.opacity(0.18))
+                        .frame(width: 200, height: 200)
+                        .offset(x: 90, y: -20)
+                    Circle()
+                        .fill(Color.umdRed.opacity(0.10))
+                        .frame(width: 130, height: 130)
+                        .offset(x: -50, y: 35)
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: 60, weight: .ultraLight))
+                        .foregroundStyle(.white.opacity(0.07))
+                        .offset(x: 100, y: -5)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your Taste Profile")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .textCase(.uppercase)
+                    .kerning(0.5)
+                Text("Cuisine Preferences")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 128)
+        .clipped()
+    }
+
+    // MARK: - Onboarding layout
+
+    private var onboardingLayout: some View {
         VStack(spacing: 0) {
             Spacer().frame(height: 24)
 
@@ -37,17 +151,20 @@ struct PalateSurveyView: View {
             Text("Pick your favorite cuisines to personalize your feed")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
                 .padding(.top, 4)
 
             Spacer().frame(height: 16)
 
             ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    ForEach(cuisines) { cuisine in
-                        cuisineCard(cuisine)
+                VStack(alignment: .leading, spacing: 24) {
+                    ForEach(cuisineCategories) { category in
+                        categorySection(category)
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
 
             Spacer()
@@ -108,42 +225,89 @@ struct PalateSurveyView: View {
         }
     }
 
-    private func cuisineCard(_ cuisine: CuisineOption) -> some View {
-        let isSelected = selected.contains(cuisine.id)
-        return Button {
-            if isSelected {
-                selected.remove(cuisine.id)
-            } else {
-                selected.insert(cuisine.id)
-            }
-        } label: {
-            VStack(spacing: 8) {
-                Text(cuisine.icon)
-                    .font(.system(size: 36))
-                Text(cuisine.label)
+    // MARK: - Category section
+
+    private func categorySection(_ category: CuisineCategory) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.umdRed)
+                    .frame(width: 3, height: 16)
+                    .clipShape(Capsule())
+                Text(category.title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
-                Text(cuisine.description)
-                    .font(.caption2)
+                    .padding(.leading, 8)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(category.options) { option in
+                    cuisineCard(option)
+                }
+            }
+        }
+    }
+
+    // MARK: - Cuisine card
+
+    private func cuisineCard(_ option: CuisineOption) -> some View {
+        let isSelected = selected.contains(option.id)
+        return Button {
+            if isSelected {
+                selected.remove(option.id)
+            } else {
+                selected.insert(option.id)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(option.label)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(isSelected ? Color.umdRed : .primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Text(option.description)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
                     .lineLimit(2)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .padding(.horizontal, 8)
-            .background(isSelected ? Color.umdRed.opacity(0.12) : Color(.systemBackground))
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .padding(.vertical, 13)
+            .padding(.horizontal, 12)
+            .background(isSelected ? Color.umdRed.opacity(0.08) : Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(isSelected ? Color.umdRed : Color(.systemGray4), lineWidth: isSelected ? 2 : 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    // MARK: - Apply button
+
+    private var applyButton: some View {
+        Button {
+            UserPreferences.shared.cuisinePrefs = Array(selected)
+            onComplete()
+            dismiss()
+        } label: {
+            Text("Save & Continue")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.umdRed)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
     }
 }
 
 #Preview {
-    PalateSurveyView(onComplete: {})
+    NavigationStack {
+        PalateSurveyView(onComplete: {}, isOnboarding: false)
+    }
 }

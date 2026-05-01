@@ -11,8 +11,6 @@ struct ProfileView: View {
     @State private var showSignOutAlert = false
     @State private var showDeleteAlert = false
     @State private var isDeleting = false
-    @State private var showCuisinePrefs = false
-    @State private var showDietaryPrefs = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -47,7 +45,7 @@ struct ProfileView: View {
                                     print("Upgrade failed: \(error.localizedDescription)")
                                 }
                             }
-                            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                            .signInWithAppleButtonStyle(isDarkMode ? .white : .black)
                             .frame(width: 220, height: 38)
                             .clipShape(RoundedRectangle(cornerRadius: 19))
                             .disabled(isUpgrading)
@@ -75,46 +73,20 @@ struct ProfileView: View {
                         sectionLabel("PREFERENCES")
 
                         // Cuisine Preferences
-                        itemCard {
-                            HStack(spacing: 14) {
-                                Image(systemName: "fork.knife")
-                                    .font(.system(size: 17))
-                                    .foregroundStyle(Color.umdRed)
-                                    .frame(width: 24)
-                                Text("Cuisine Preferences")
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color(.systemGray3))
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 16)
-                        } action: {
-                            showCuisinePrefs = true
+                        NavigationLink {
+                            PalateSurveyView(onComplete: {}, isOnboarding: false)
+                        } label: {
+                            navItemRow(icon: "fork.knife", title: "Cuisine Preferences")
                         }
+                        .buttonStyle(.plain)
 
                         // Allergens & Dietary Needs
-                        itemCard {
-                            HStack(spacing: 14) {
-                                Image(systemName: "exclamationmark.triangle")
-                                    .font(.system(size: 17))
-                                    .foregroundStyle(Color.umdRed)
-                                    .frame(width: 24)
-                                Text("Allergens & Dietary Needs")
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color(.systemGray3))
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 16)
-                        } action: {
-                            showDietaryPrefs = true
+                        NavigationLink {
+                            DietaryPrefsView(preferences: preferences)
+                        } label: {
+                            navItemRow(icon: "exclamationmark.triangle", title: "Allergens & Dietary Needs")
                         }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 16)
 
@@ -154,9 +126,9 @@ struct ProfileView: View {
                                     .font(.body)
                                     .foregroundStyle(.primary)
                                 Spacer()
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color(.systemGray3))
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color(.systemGray2))
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 16)
@@ -225,14 +197,6 @@ struct ProfileView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Profile")
-            .sheet(isPresented: $showCuisinePrefs) {
-                NavigationStack {
-                    PalateSurveyView(onComplete: {}, isOnboarding: false)
-                }
-            }
-            .sheet(isPresented: $showDietaryPrefs) {
-                DietaryPrefsSheet(preferences: preferences)
-            }
             .overlay {
                 if isUpgrading {
                     Color.black.opacity(0.3).ignoresSafeArea()
@@ -266,6 +230,29 @@ struct ProfileView: View {
                 .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Nav Item Row
+
+    private func navItemRow(icon: String, title: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 17))
+                .foregroundStyle(Color.umdRed)
+                .frame(width: 24)
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color(.systemGray3))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
     }
 
     // MARK: - Section Label
@@ -379,9 +366,9 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - Dietary Prefs Sheet
+// MARK: - Dietary Prefs View
 
-private struct DietaryPrefsSheet: View {
+struct DietaryPrefsView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var preferences: UserPreferences
 
@@ -397,8 +384,7 @@ private struct DietaryPrefsSheet: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 24) {
                     filterSection(title: "Dietary Preferences", icon: "leaf.fill", iconColor: Color.umdRed) {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
@@ -425,7 +411,6 @@ private struct DietaryPrefsSheet: View {
                         }
                     }
 
-                    // Safety advisory
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "info.circle.fill")
                             .foregroundStyle(Color(.systemGray3))
@@ -445,27 +430,47 @@ private struct DietaryPrefsSheet: View {
                     .background(Color(.systemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.umdBorder, lineWidth: 1))
+
+                    Button { dismiss() } label: {
+                        Text("Save & Continue")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Color.umdRed)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
-                .padding(.bottom, 40)
+                .padding(.bottom, 32)
             }
-            .background(Color(.systemBackground))
-            .navigationTitle("Allergens & Dietary Needs")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
+        .background(Color(.systemGroupedBackground))
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.umdRed)
+                        .frame(width: 44, height: 44)
                 }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                Spacer()
+                Text("Allergens & Dietary Needs")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Color.clear.frame(width: 44, height: 44)
+                    .padding(.trailing, 8)
             }
-            .toolbarBackground(Color(.systemBackground), for: .navigationBar)
+            .frame(height: 44)
+            .background(Color(.systemBackground))
+            .overlay(alignment: .bottom) { Divider() }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
     }
 
     private func filterSection<Content: View>(
