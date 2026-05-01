@@ -141,6 +141,9 @@ class HomeViewModel {
         let allStations: [(station: String, hallId: String)] = allStationKeys.compactMap { key in
             guard let item = minimalFiltered.first(where: { "\($0.station)_\($0.diningHallId)" == key })
             else { return nil }
+            // Skip stations that have no visible items after full filtering
+            guard filtered.contains(where: { $0.station == item.station && $0.diningHallId == item.diningHallId })
+            else { return nil }
             return (item.station, item.diningHallId)
         }.sorted {
             let aFav = loadedFavStations.contains($0.station)

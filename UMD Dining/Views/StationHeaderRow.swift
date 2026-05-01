@@ -23,12 +23,12 @@ struct StationHeaderRow: View {
 
                 Spacer()
 
-                HStack(spacing: 2) {
+                HStack(spacing: 3) {
                     Text("View all")
-                        .font(.inter(size: 11, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.umdRed.opacity(0.7))
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.umdRed.opacity(0.7))
                 }
             }
