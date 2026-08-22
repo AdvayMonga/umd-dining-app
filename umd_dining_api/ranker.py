@@ -11,6 +11,7 @@ Tag is assigned based on the highest-priority signal that fired.
 
 import random
 import re
+import zlib
 from embeddings import cosine_similarity, compute_centroid
 
 
@@ -258,11 +259,6 @@ def rank_items(
                 item_embedding = food.get('embedding')
                 if item_embedding:
                     sim = cosine_similarity(fav_centroid, item_embedding)
-                    if not hasattr(rank_items, '_debug_logged'):
-                        print(f"[DEBUG] sim_thresholds: low={sim_low:.3f} mid={sim_mid:.3f} high={sim_high:.3f}")
-                        rank_items._debug_logged = True
-                    if sim >= 0.25:
-                        print(f"[DEBUG] sim={sim:.3f} for {food.get('name', rec_num)}")
                     if sim >= sim_high:
                         score += 55
                         signals.add('similar_to_favorites')
@@ -317,7 +313,8 @@ def rank_items(
 
     # Sort scored items descending; shuffle untagged with date-seeded RNG
     scored.sort(key=lambda x: -x[0])
-    rng = random.Random(hash(date_seed))
+    # hash() is randomized per process — crc32 keeps the shuffle stable across restarts/workers
+    rng = random.Random(zlib.crc32(date_seed.encode()))
     rng.shuffle(untagged)
 
     # --- Diminishing returns on favorites ---
