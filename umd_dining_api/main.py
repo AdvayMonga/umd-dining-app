@@ -91,7 +91,13 @@ async def lifespan(app: FastAPI):
     # Preferences
     await db.preferences.create_index([('user_id', 1)], unique=True)
 
-    # Users
+    # Users — Apple docs historically lacked user_id, which collides as null
+    # under the unique index. Backfill before ensuring the index; all insert
+    # paths now always set user_id.
+    await db.users.update_many(
+        {'user_id': {'$exists': False}, 'apple_user_id': {'$exists': True}},
+        [{'$set': {'user_id': '$apple_user_id'}}]
+    )
     await db.users.create_index([('user_id', 1)], unique=True)
     await db.users.create_index([('apple_user_id', 1)], sparse=True)
 
