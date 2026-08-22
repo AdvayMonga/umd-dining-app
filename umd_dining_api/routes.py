@@ -78,14 +78,16 @@ async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> 
     missing = [rn for rn in rec_nums if rn not in today_loc]
     next_loc = {}
     if missing:
-        future_entries = await db.menus.find(
-            {'rec_num': {'$in': missing}},
-            {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'date': 1}
-        ).to_list(None)
         try:
             today_dt = datetime.strptime(today, '%m/%d/%Y').date()
         except ValueError:
             today_dt = datetime.now().date()
+        # Bound to the 7-day window — dates are m/d/Y strings, so match explicitly
+        week_dates = [(today_dt + timedelta(days=i)).strftime('%-m/%-d/%Y') for i in range(1, 8)]
+        future_entries = await db.menus.find(
+            {'rec_num': {'$in': missing}, 'date': {'$in': week_dates}},
+            {'_id': 0, 'rec_num': 1, 'station': 1, 'dining_hall_id': 1, 'date': 1}
+        ).to_list(None)
         for e in future_entries:
             try:
                 d = datetime.strptime(e['date'], '%m/%d/%Y').date()
@@ -151,69 +153,81 @@ async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> 
 
 # --- Trending cache (global, 5-min TTL) ---
 _trending_cache: dict = {'data': set(), 'expires': 0}
+_trending_lock = asyncio.Lock()
 
 # --- Guest response cache (5-min TTL) ---
 _guest_menu_cache: dict = {}  # {cache_key: {'data': response_dict, 'expires': float}}
 
 async def _get_trending():
-    now = time.time()
-    if now < _trending_cache['expires']:
+    if time.time() < _trending_cache['expires']:
         return _trending_cache['data']
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    pipeline = [
-        {'$match': {'added_at': {'$gte': cutoff}}},
-        {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-        {'$sort': {'count': -1}},
-        {'$limit': 50}
-    ]
-    result = set()
-    async for doc in db.favorites.aggregate(pipeline):
-        result.add(doc['_id'])
-    _trending_cache.update({'data': result, 'expires': now + 300})
-    return result
+    async with _trending_lock:
+        if time.time() < _trending_cache['expires']:
+            return _trending_cache['data']
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        pipeline = [
+            {'$match': {'added_at': {'$gte': cutoff}}},
+            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+            {'$sort': {'count': -1}},
+            {'$limit': 50}
+        ]
+        result = set()
+        async for doc in db.favorites.aggregate(pipeline):
+            result.add(doc['_id'])
+        _trending_cache.update({'data': result, 'expires': time.time() + 300})
+        return result
 
 
 # --- Trending searches cache (5-min TTL) ---
 _trending_searches_cache: dict = {'data': [], 'expires': 0}
+_trending_searches_lock = asyncio.Lock()
 
 async def _get_trending_searches():
-    now = time.time()
-    if now < _trending_searches_cache['expires']:
+    if time.time() < _trending_searches_cache['expires']:
         return _trending_searches_cache['data']
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    pipeline = [
-        {'$match': {'result_count': {'$gt': 0}, 'timestamp': {'$gte': cutoff}}},
-        {'$group': {'_id': {'$toLower': '$query'}, 'count': {'$sum': 1}}},
-        {'$sort': {'count': -1}},
-        {'$limit': 10}
-    ]
-    result = []
-    async for doc in db.search_queries.aggregate(pipeline):
-        if doc['_id'] and len(doc['_id']) >= 2:
-            result.append(doc['_id'])
-    _trending_searches_cache.update({'data': result, 'expires': now + 300})
-    return result
+    async with _trending_searches_lock:
+        if time.time() < _trending_searches_cache['expires']:
+            return _trending_searches_cache['data']
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        # Rank by distinct users (min 3) so one account can't plant a trending query
+        pipeline = [
+            {'$match': {'result_count': {'$gt': 0}, 'timestamp': {'$gte': cutoff}, 'user_id': {'$ne': None}}},
+            {'$group': {'_id': {'$toLower': '$query'}, 'users': {'$addToSet': '$user_id'}}},
+            {'$project': {'count': {'$size': '$users'}}},
+            {'$match': {'count': {'$gte': 3}}},
+            {'$sort': {'count': -1}},
+            {'$limit': 10}
+        ]
+        result = []
+        async for doc in db.search_queries.aggregate(pipeline):
+            if doc['_id'] and len(doc['_id']) >= 2:
+                result.append(doc['_id'])
+        _trending_searches_cache.update({'data': result, 'expires': time.time() + 300})
+        return result
 
 
 # --- Global view counts cache (5-min TTL) ---
 _global_views_cache: dict = {'data': {}, 'expires': 0}
+_global_views_lock = asyncio.Lock()
 
 async def _get_global_views():
-    now = time.time()
-    if now < _global_views_cache['expires']:
+    if time.time() < _global_views_cache['expires']:
         return _global_views_cache['data']
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    pipeline = [
-        {'$match': {'timestamp': {'$gte': cutoff}}},
-        {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-        {'$sort': {'count': -1}},
-        {'$limit': 100},
-    ]
-    result = {}
-    async for doc in db.item_views.aggregate(pipeline):
-        result[doc['_id']] = doc['count']
-    _global_views_cache.update({'data': result, 'expires': now + 300})
-    return result
+    async with _global_views_lock:
+        if time.time() < _global_views_cache['expires']:
+            return _global_views_cache['data']
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        pipeline = [
+            {'$match': {'timestamp': {'$gte': cutoff}}},
+            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+            {'$sort': {'count': -1}},
+            {'$limit': 100},
+        ]
+        result = {}
+        async for doc in db.item_views.aggregate(pipeline):
+            result[doc['_id']] = doc['count']
+        _global_views_cache.update({'data': result, 'expires': time.time() + 300})
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -692,13 +706,11 @@ async def get_menu(
     date: Optional[str] = Query(default=None),
     dining_hall_id: Optional[str] = Query(default=None),
 ):
-    query: dict = {}
+    if not date:
+        raise HTTPException(status_code=400, detail='date required')
+    query: dict = {'date': date}
     if dining_hall_id:
         query['dining_hall_id'] = dining_hall_id
-    if date:
-        query['date'] = date
-    if not query:
-        raise HTTPException(status_code=400, detail='at least one filter (date or dining_hall_id) required')
 
     menu_entries = await db.menus.find(query, {'_id': 0}).to_list(5000)
     rec_nums = [entry['rec_num'] for entry in menu_entries]
@@ -749,10 +761,16 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
                             _nutrition_in_flight.discard(rn)
                 _nutrition_executor.submit(_fetch)
 
-    # Find next available date (today or future)
+    # Independent lookups — run in parallel
     from datetime import datetime as dt
+    menu_dates, menu_entry, availability_map = await asyncio.gather(
+        db.menus.distinct('date', {'rec_num': rec_num}),
+        db.menus.find_one({'rec_num': rec_num}, {'dietary_icons': 1, '_id': 0}),
+        _resolve_availability([rec_num]),
+    )
+
+    # Find next available date (today or future)
     today = dt.now().date()
-    menu_dates = await db.menus.distinct('date', {'rec_num': rec_num})
     next_available = None
     earliest_future = None
     for d in menu_dates:
@@ -764,11 +782,8 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
         except ValueError:
             pass
 
-    # Get dietary_icons from menus collection (reliable source for allergen info)
-    menu_entry = await db.menus.find_one({'rec_num': rec_num}, {'dietary_icons': 1, '_id': 0})
     dietary_icons = menu_entry.get('dietary_icons', []) if menu_entry else []
-
-    availability = (await _resolve_availability([rec_num])).get(rec_num)
+    availability = availability_map.get(rec_num)
 
     return {
         'success': True,
@@ -1007,16 +1022,12 @@ async def search_menu(
             candidate_map[rn] = food
 
     # --- Semantic re-ranking: fetch embeddings only for text-matched candidates ---
-    has_semantic = query_embedding is not None and candidate_map
+    # bool() matters: the raw dict would be serialized into the response
+    has_semantic = query_embedding is not None and bool(candidate_map)
     if has_semantic:
-        import numpy as np
         candidate_rns = list(candidate_map.keys())
         embed_rec_nums, embed_matrix = await _get_candidate_embeddings(candidate_rns)
         if embed_matrix is not None:
-            q_vec = np.asarray(query_embedding, dtype=np.float32)
-            norms = np.linalg.norm(embed_matrix, axis=1) * np.linalg.norm(q_vec)
-            norms[norms == 0] = 1.0
-            sims = embed_matrix @ q_vec / norms
             for i, rn in enumerate(embed_rec_nums):
                 if rn in candidate_map:
                     candidate_map[rn]['embedding'] = embed_matrix[i].tolist()
