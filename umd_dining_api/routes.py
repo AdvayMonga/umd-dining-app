@@ -253,7 +253,8 @@ async def get_optional_user(authorization: str = Header(default='')) -> Optional
 async def require_admin(x_admin_key: str = Header(default='')):
     if not ADMIN_SECRET:
         raise HTTPException(status_code=500, detail='server misconfigured')
-    if x_admin_key != ADMIN_SECRET:
+    # constant-time; encode because str compare_digest raises on non-ASCII
+    if not hmac.compare_digest(x_admin_key.encode(), ADMIN_SECRET.encode()):
         raise HTTPException(status_code=403, detail='unauthorized')
 
 
@@ -374,7 +375,8 @@ class SearchQueryBody(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get('/')
-async def home():
+@limiter.limit("30/minute")
+async def home(request: Request):
     from fastapi.responses import HTMLResponse
     return HTMLResponse("""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -420,7 +422,8 @@ h1{font-size:36px;font-weight:700;color:#E21833;margin-bottom:6px;letter-spacing
 
 
 @router.get('/privacy')
-async def privacy_policy():
+@limiter.limit("30/minute")
+async def privacy_policy(request: Request):
     from fastapi.responses import HTMLResponse
     return HTMLResponse("""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1117,7 +1120,9 @@ async def track_search_query(
 # ---------------------------------------------------------------------------
 
 @router.post('/api/scrape')
+@limiter.limit("5/minute")
 async def scrape(
+    request: Request,
     date: Optional[str] = Query(default=None),
     dining_hall_id: Optional[str] = Query(default=None),
     _: None = Depends(require_admin),
@@ -1138,7 +1143,8 @@ async def scrape(
 
 
 @router.post('/api/scrape-week')
-async def scrape_week(_: None = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def scrape_week(request: Request, _: None = Depends(require_admin)):
     if not _admin_locks['scrape_week'].acquire(blocking=False):
         raise HTTPException(status_code=409, detail='scrape-week already running')
     def _run():
@@ -1151,7 +1157,8 @@ async def scrape_week(_: None = Depends(require_admin)):
 
 
 @router.post('/api/embed-missing')
-async def embed_missing(_: None = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def embed_missing(request: Request, _: None = Depends(require_admin)):
     if not _admin_locks['embed'].acquire(blocking=False):
         raise HTTPException(status_code=409, detail='embedding already running')
     def _run():
@@ -1171,7 +1178,8 @@ async def embed_missing(_: None = Depends(require_admin)):
 
 
 @router.post('/api/backfill-similar')
-async def backfill_similar(_: None = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def backfill_similar(request: Request, _: None = Depends(require_admin)):
     if not _admin_locks['similar'].acquire(blocking=False):
         raise HTTPException(status_code=409, detail='backfill-similar already running')
     def _run():
@@ -1186,7 +1194,8 @@ async def backfill_similar(_: None = Depends(require_admin)):
 
 
 @router.post('/api/backfill-frequency')
-async def backfill_frequency(_: None = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def backfill_frequency(request: Request, _: None = Depends(require_admin)):
     if not _admin_locks['frequency'].acquire(blocking=False):
         raise HTTPException(status_code=409, detail='backfill-frequency already running')
     def _run():
@@ -1215,7 +1224,8 @@ async def backfill_frequency(_: None = Depends(require_admin)):
 
 
 @router.post('/api/cuisine-embeddings/generate')
-async def generate_cuisine_embeddings(_: None = Depends(require_admin)):
+@limiter.limit("5/minute")
+async def generate_cuisine_embeddings(request: Request, _: None = Depends(require_admin)):
     if not _admin_locks['cuisine'].acquire(blocking=False):
         raise HTTPException(status_code=409, detail='cuisine embedding already running')
     from embeddings import generate_embedding, compute_centroid
