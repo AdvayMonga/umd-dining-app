@@ -403,9 +403,31 @@ actor DiningAPIService {
     // MARK: - Networking
 
     private func fetch(_ urlString: String, token: String? = nil) async throws -> Data {
+        do {
+            return try await fetchOnce(urlString, token: token)
+        } catch let error as APIError {
+            // One bounded retry for transient failures — GETs are idempotent
+            switch error {
+            case .networkError:
+                break
+            case .serverError(let code) where code >= 500:
+                break
+            default:
+                throw error
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            return try await fetchOnce(urlString, token: token)
+        }
+    }
+
+    private func fetchOnce(_ urlString: String, token: String? = nil) async throws -> Data {
         guard let url = URL(string: urlString) else { throw APIError.invalidURL }
         var request = URLRequest(url: url, timeoutInterval: 10)
-        if let t = token {
+        // Always attach the JWT when signed in: the server rate-limits per user
+        // when a token is present, per IP otherwise — and campus NAT shares IPs
+        var t = token
+        if t == nil { t = await AuthManager.shared.jwtToken }
+        if let t {
             request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
         }
         do {
@@ -460,9 +482,15 @@ actor DiningAPIService {
         return data
     }
 
+    @MainActor private static var isRefreshingToken = false
+
     @MainActor
     private func handleUnauthorized() async {
         if AuthManager.shared.isGuest { return }
+        // Re-entrancy guard: refreshToken() itself can 401, which would recurse here
+        guard !Self.isRefreshingToken else { return }
+        Self.isRefreshingToken = true
+        defer { Self.isRefreshingToken = false }
         // Try refreshing the token — but never sign out automatically.
         // The user stays signed in locally; worst case API calls fail until
         // they get a working connection again.

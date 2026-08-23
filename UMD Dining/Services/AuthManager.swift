@@ -180,13 +180,20 @@ class AuthManager {
 
     private func saveToKeychain(_ value: String, key: String) {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
+        // Delete query must stay attribute-free: adding kSecAttrAccessible would
+        // fail to match items written by older versions, breaking the re-save
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key
+        ]
+        SecItemDelete(deleteQuery as CFDictionary)
+        let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecValueData as String: data
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
-        SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+        SecItemAdd(addQuery as CFDictionary, nil)
     }
 
     private func loadFromKeychain(key: String) -> String? {
