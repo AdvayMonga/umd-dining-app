@@ -1295,7 +1295,7 @@ async def auth_apple(request: Request, body: AppleAuthBody = Body(...)):
 
     await db.users.update_one(
         {'apple_user_id': apple_user_id},
-        {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now(timezone.utc)}},
+        {'$setOnInsert': {'user_id': apple_user_id, 'apple_user_id': apple_user_id, 'created_at': datetime.now(timezone.utc)}},
         upsert=True
     )
     return {'success': True, 'user_id': apple_user_id, 'token': _make_token(apple_user_id)}
@@ -1314,7 +1314,7 @@ async def upgrade_guest(
 
     await db.users.update_one(
         {'apple_user_id': apple_user_id},
-        {'$setOnInsert': {'apple_user_id': apple_user_id, 'created_at': datetime.now(timezone.utc)}},
+        {'$setOnInsert': {'user_id': apple_user_id, 'apple_user_id': apple_user_id, 'created_at': datetime.now(timezone.utc)}},
         upsert=True
     )
 
@@ -1340,7 +1340,8 @@ async def _archive_user_data(user_id: str):
     for coll in [db.favorites, db.station_favorites, db.preferences, db.intake, db.item_views, db.search_queries]:
         await coll.update_many({'user_id': user_id}, {'$set': {'user_id': anon_id}})
 
-    await db.users.delete_one({'user_id': user_id})
+    # Match by either field — legacy Apple docs may lack user_id
+    await db.users.delete_one({'$or': [{'user_id': user_id}, {'apple_user_id': user_id}]})
 
 
 @router.delete('/api/auth/account')
