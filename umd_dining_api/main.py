@@ -22,7 +22,7 @@ def _rate_limit_key(request: Request) -> str:
     if auth.startswith("Bearer "):
         try:
             payload = pyjwt.decode(auth[7:], SECRET_KEY, algorithms=["HS256"])
-            user_id = payload.get("user_id")
+            user_id = payload.get("sub")
             if user_id:
                 return f"user:{user_id}"
         except Exception:
@@ -44,7 +44,9 @@ DINING_HALLS = {
     "16": {"name": "South Campus Diner", "location": "South Campus"},
 }
 
-limiter = Limiter(key_func=_rate_limit_key, default_limits=["200 per day", "50 per hour"])
+# Per-route limits only (every route is decorated); default_limits were dead
+# config — they require SlowAPIMiddleware, which was never installed
+limiter = Limiter(key_func=_rate_limit_key)
 
 
 @asynccontextmanager
