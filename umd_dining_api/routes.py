@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import hashlib
 import hmac
 import re
@@ -28,6 +29,15 @@ router = APIRouter()
 _nutrition_executor = ThreadPoolExecutor(max_workers=4)
 _nutrition_in_flight: set = set()
 _nutrition_lock = threading.Lock()
+
+# --- Dedicated pool for CPU-bound ranking: keeps it off the default executor,
+# which is shared with 30s-timeout OpenAI calls that could starve it ---
+_ranking_executor = ThreadPoolExecutor(max_workers=4)
+
+
+async def _run_ranking(func, /, **kwargs):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_ranking_executor, functools.partial(func, **kwargs))
 
 # --- Admin job locks (prevent concurrent execution) ---
 _admin_locks = {
@@ -657,7 +667,9 @@ async def get_ranked_menu(
 
     preferred_halls = user_prefs.get('preferred_dining_halls', []) if user_prefs else []
 
-    result = rank_items(
+    # CPU-bound — run off the event loop so health checks and other requests aren't starved
+    result = await _run_ranking(
+        rank_items,
         menu_entries=menu_entries,
         foods=foods,
         fav_rec_nums=fav_rec_nums,
@@ -1026,8 +1038,9 @@ async def search_menu(
     availability = await _resolve_availability(candidate_rec_nums) if candidate_rec_nums else {}
     available_today_rec_nums = {rn for rn, info in availability.items() if info.get('available_today')}
 
-    # --- Rank ---
-    ranked = rank_search_results(
+    # --- Rank (CPU-bound — run off the event loop) ---
+    ranked = await _run_ranking(
+        rank_search_results,
         candidates=list(candidate_map.values()),
         query=q,
         query_embedding=query_embedding,
