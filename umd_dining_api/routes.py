@@ -13,7 +13,7 @@ from typing import Optional
 
 import jwt as pyjwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import requests as sync_requests
 
@@ -371,12 +371,12 @@ class RemoveIntakeBody(BaseModel):
     logged_at: str = ''
 
 class ItemViewBody(BaseModel):
-    rec_num: str
-    food_name: str = ''
-    source: str = ''
+    rec_num: str = Field(max_length=64)
+    food_name: str = Field(default='', max_length=200)
+    source: str = Field(default='', max_length=32)
 
 class SearchQueryBody(BaseModel):
-    query: str
+    query: str = Field(max_length=200)
     result_count: int = 0
 
 
@@ -689,13 +689,16 @@ async def get_ranked_menu(
 
     response = {'success': True, 'count': len(result), 'data': result}
 
-    # Cache guest responses for 5 minutes
+    # Cache guest responses for 5 minutes (hard-capped — keys are client-controlled)
     if is_guest:
         _guest_menu_cache[cache_key] = {'data': response, 'expires': time.time() + 300}
         if len(_guest_menu_cache) > 50:
             stale = [k for k, v in _guest_menu_cache.items() if time.time() >= v['expires']]
             for k in stale:
                 del _guest_menu_cache[k]
+            while len(_guest_menu_cache) > 50:
+                oldest = min(_guest_menu_cache, key=lambda k: _guest_menu_cache[k]['expires'])
+                del _guest_menu_cache[oldest]
 
     return response
 
@@ -897,11 +900,14 @@ async def _get_query_embedding(query: str):
     try:
         embedding = await asyncio.wait_for(generate_embedding_async(key), timeout=3.0)
         _query_embed_cache[key] = {'embedding': embedding, 'expires': now + 3600}
-        # Evict expired entries if cache is large
+        # Evict expired entries, then hard-cap by evicting oldest (keys are client-controlled)
         if len(_query_embed_cache) > 200:
             stale = [k for k, v in _query_embed_cache.items() if now >= v['expires']]
             for k in stale:
                 del _query_embed_cache[k]
+            while len(_query_embed_cache) > 200:
+                oldest = min(_query_embed_cache, key=lambda k: _query_embed_cache[k]['expires'])
+                del _query_embed_cache[oldest]
         return embedding
     except Exception:
         return None
@@ -935,6 +941,10 @@ async def search_menu(
         raise HTTPException(status_code=400, detail='Search query required')
     if len(q) > 100:
         raise HTTPException(status_code=400, detail='Search query too long')
+
+    # Semantic search costs an OpenAI call per uncached query — signed-in users only
+    if semantic and user_id is None:
+        semantic = False
 
     safe_query = re.escape(q)
 
@@ -1098,6 +1108,8 @@ async def track_item_view(
     body: ItemViewBody,
     user_id: Optional[str] = Depends(get_optional_user),
 ):
+    if user_id is None:
+        return {'success': True}
     allowed_sources = {'home', 'station', 'search', 'profile_favorites', 'tracker', 'similar'}
     source = body.source if body.source in allowed_sources else 'unknown'
     await db.item_views.insert_one({
@@ -1117,7 +1129,7 @@ async def track_search_query(
     body: SearchQueryBody,
     user_id: Optional[str] = Depends(get_optional_user),
 ):
-    if len(body.query) > 200 or body.result_count == 0:
+    if user_id is None or len(body.query) > 200 or body.result_count == 0:
         return {'success': True}
     await db.search_queries.insert_one({
         'user_id': user_id,
