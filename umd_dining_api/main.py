@@ -35,7 +35,7 @@ if not mongo_uri:
     raise ValueError("MONGO_URI environment variable required")
 
 # Motor async client — initialized at module level, connected during lifespan
-client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000, maxPoolSize=20)
+client = AsyncIOMotorClient(mongo_uri, serverSelectionTimeoutMS=5000, maxPoolSize=50)
 db = client.get_default_database()
 
 DINING_HALLS = {
@@ -86,6 +86,7 @@ async def lifespan(app: FastAPI):
     # Favorites — fast per-user and trending aggregation
     await db.favorites.create_index([('user_id', 1), ('rec_num', 1)])
     await db.favorites.create_index([('rec_num', 1)])
+    await db.favorites.create_index([('added_at', 1)])
 
     # Station favorites
     await db.station_favorites.create_index([('user_id', 1), ('station_name', 1)])
