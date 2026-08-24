@@ -4,8 +4,8 @@ An iOS app for browsing University of Maryland dining hall menus, with personali
 
 ## Structure
 
-- **`UMD Dining/`** — SwiftUI iOS app
-- **`umd_dining_api/`** — Python/Flask backend that scrapes and serves dining data
+- **`umd-dining-app/`** — SwiftUI iOS app
+- **`umd-dining-api/`** — Python/FastAPI backend that scrapes and serves dining data
 
 ## Features
 
@@ -18,4 +18,12 @@ An iOS app for browsing University of Maryland dining hall menus, with personali
 
 ## Backend
 
-See [`umd_dining_api/README.md`](umd_dining_api/README.md) for API setup and endpoints.
+See [`umd-dining-api/README.md`](umd-dining-api/README.md) for API setup and endpoints.
+
+## Deployment
+
+The API deploys to AWS Elastic Beanstalk automatically when changes under
+`umd-dining-api/` land on `main` (see `.github/workflows/deploy-api.yml`), and
+can also be triggered manually from the Actions tab. Every deploy is labeled
+with its commit SHA; roll back by redeploying a previous version from the EB
+console. The iOS app ships via App Store Connect (Xcode → Product → Archive).
