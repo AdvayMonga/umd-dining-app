@@ -1,0 +1,63 @@
+name: Deploy API to Elastic Beanstalk
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "umd-dining-api/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  EB_APP: umd-dining-api
+  EB_ENV: umd-dining-api-prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build source bundle
+        working-directory: umd-dining-api
+        run: |
+          zip -r ../bundle.zip . \
+            -x "venv/*" -x ".venv/*" -x "__pycache__/*" -x "*.pyc" \
+            -x ".env*" -x ".git*" -x ".DS_Store" -x ".claude/*" \
+            -x ".elasticbeanstalk/*"
+
+      - name: Upload and deploy
+        run: |
+          BUCKET=$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)
+          KEY="${EB_APP}/${{ github.sha }}.zip"
+          aws s3 cp bundle.zip "s3://${BUCKET}/${KEY}"
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APP" \
+            --version-label "${{ github.sha }}" \
+            --source-bundle S3Bucket="$BUCKET",S3Key="$KEY"
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENV" \
+            --version-label "${{ github.sha }}"
+
+      - name: Wait for environment to be ready
+        run: |
+          aws elasticbeanstalk wait environment-updated \
+            --environment-names "$EB_ENV" \
+            --version-label "${{ github.sha }}"
+          HEALTH=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$EB_ENV" \
+            --query 'Environments[0].Health' --output text)
+          echo "Environment health: $HEALTH"
+          test "$HEALTH" = "Green"
