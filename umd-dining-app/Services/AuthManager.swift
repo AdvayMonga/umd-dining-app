@@ -118,8 +118,10 @@ class AuthManager {
     }
 
     /// Refreshes the JWT if it expires within 7 days. Call on app launch.
+    /// Guests refresh too: paired with server-side account self-healing, an
+    /// active guest's session now rolls forward indefinitely.
     func refreshTokenIfNeeded() async {
-        guard let token = jwtToken, !isGuest else { return }
+        guard let token = jwtToken else { return }
         // Decode the exp claim from the JWT payload (base64-encoded middle segment)
         let parts = token.split(separator: ".")
         guard parts.count == 3,

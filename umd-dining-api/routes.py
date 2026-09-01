@@ -250,17 +250,30 @@ async def get_current_user(authorization: str = Header(default='')) -> str:
     token = authorization[7:]
     try:
         payload = pyjwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['sub']
+        user_id = payload.get('sub')
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail='token expired')
     except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail='invalid token')
+    if not user_id:
         raise HTTPException(status_code=401, detail='invalid token')
     exists = await db.users.find_one(
         {'$or': [{'user_id': user_id}, {'apple_user_id': user_id}]},
         {'_id': 1}
     )
     if not exists:
-        raise HTTPException(status_code=401, detail='user not found')
+        # Guest docs TTL-expire 7 days after creation but tokens live 90 days:
+        # self-heal the account so active guests are never locked out. Idle
+        # guests still get vacuumed; the doc just cycles while in active use.
+        if user_id.startswith('guest_'):
+            await db.users.update_one(
+                {'user_id': user_id},
+                {'$setOnInsert': {'user_id': user_id, 'is_guest': True,
+                                  'created_at': datetime.now(timezone.utc)}},
+                upsert=True
+            )
+        else:
+            raise HTTPException(status_code=401, detail='user not found')
     return user_id
 
 
@@ -269,7 +282,7 @@ async def get_optional_user(authorization: str = Header(default='')) -> Optional
         return None
     try:
         payload = pyjwt.decode(authorization[7:], SECRET_KEY, algorithms=['HS256'])
-        return payload['sub']
+        return payload.get('sub')
     except pyjwt.InvalidTokenError:
         return None
 
