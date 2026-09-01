@@ -17,6 +17,13 @@ db = client.get_database()
 # Base URL
 BASE_URL = "https://nutrition.umd.edu"
 
+# Icons the app knows how to render; anything else UMD adds is dropped
+KNOWN_ICONS = {
+    "vegan", "vegetarian", "HalalFriendly",
+    "Contains dairy", "Contains egg", "Contains fish", "Contains gluten",
+    "Contains nuts", "Contains Shellfish", "Contains sesame", "Contains soy",
+}
+
 # Known dining halls (locationNum -> name)
 DINING_HALLS = {
     "19": {"name": "Yahentamitsi Dining Hall", "location": "South Campus"},
@@ -70,7 +77,8 @@ def parse_menu_page(html, dining_hall_id, date):
                     continue
 
                 # Dietary icons (vegan, vegetarian, dairy, gluten, etc.)
-                icons = [img.get('alt', '') for img in row.find_all('img', class_='nutri-icon')]
+                icons = [alt for img in row.find_all('img', class_='nutri-icon')
+                         if (alt := img.get('alt', '')) in KNOWN_ICONS]
 
                 items.append({
                     "name": name,
