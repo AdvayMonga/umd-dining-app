@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, B
 from pydantic import BaseModel, Field
 
 import requests as sync_requests
+from pymongo.errors import DuplicateKeyError
 
 from main import db, limiter, SECRET_KEY, ADMIN_SECRET
 from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition, get_nutrition_info, db as sync_db
@@ -265,15 +266,22 @@ async def get_current_user(authorization: str = Header(default='')) -> str:
         # Guest docs TTL-expire 7 days after creation but tokens live 90 days:
         # self-heal the account so active guests are never locked out. Idle
         # guests still get vacuumed; the doc just cycles while in active use.
+        # Deleted/upgraded guests are tombstoned — deletion must stay a
+        # revocation, so those never resurrect.
+        revoked = True
         if user_id.startswith('guest_'):
+            revoked = await db.revoked_users.find_one({'user_id': user_id}, {'_id': 1})
+        if revoked:
+            raise HTTPException(status_code=401, detail='user not found')
+        try:
             await db.users.update_one(
                 {'user_id': user_id},
                 {'$setOnInsert': {'user_id': user_id, 'is_guest': True,
                                   'created_at': datetime.now(timezone.utc)}},
                 upsert=True
             )
-        else:
-            raise HTTPException(status_code=401, detail='user not found')
+        except DuplicateKeyError:
+            pass  # concurrent request self-healed first
     return user_id
 
 
@@ -1368,6 +1376,7 @@ async def upgrade_guest(
     for coll in [db.favorites, db.station_favorites, db.preferences, db.intake]:
         await coll.update_many({'user_id': user_id}, {'$set': {'user_id': apple_user_id}})
 
+    await _tombstone_guest(user_id)
     await db.users.delete_one({'user_id': user_id})
 
     return {'success': True, 'user_id': apple_user_id, 'token': _make_token(apple_user_id)}
@@ -1379,6 +1388,16 @@ async def refresh_token(request: Request, user_id: str = Depends(get_current_use
     return {'success': True, 'token': _make_token(user_id)}
 
 
+async def _tombstone_guest(user_id: str):
+    """Block a deleted/upgraded guest id from self-healing (kept 90d = token life)."""
+    if user_id.startswith('guest_'):
+        await db.revoked_users.update_one(
+            {'user_id': user_id},
+            {'$set': {'user_id': user_id, 'revoked_at': datetime.now(timezone.utc)}},
+            upsert=True
+        )
+
+
 async def _archive_user_data(user_id: str):
     """Anonymize all behavioral data for ML training, then delete the identity."""
     anon_id = 'anon_' + hmac.new(SECRET_KEY.encode(), user_id.encode(), hashlib.sha256).hexdigest()[:16]
@@ -1386,6 +1405,7 @@ async def _archive_user_data(user_id: str):
     for coll in [db.favorites, db.station_favorites, db.preferences, db.intake, db.item_views, db.search_queries]:
         await coll.update_many({'user_id': user_id}, {'$set': {'user_id': anon_id}})
 
+    await _tombstone_guest(user_id)
     # Match by either field — legacy Apple docs may lack user_id
     await db.users.delete_one({'$or': [{'user_id': user_id}, {'apple_user_id': user_id}]})
 
