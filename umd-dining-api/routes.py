@@ -19,7 +19,7 @@ import requests as sync_requests
 from pymongo.errors import DuplicateKeyError
 
 from main import db, limiter, SECRET_KEY, ADMIN_SECRET
-from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition, get_nutrition_info, db as sync_db
+from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_week, fetch_and_cache_nutrition, get_nutrition_info, KNOWN_ICONS, db as sync_db
 from ranker import rank_items
 from search_ranker import rank_search_results
 from embeddings import generate_embedding_async
@@ -821,7 +821,9 @@ async def get_nutrition(request: Request, rec_num: str = Query(default=None)):
         except ValueError:
             pass
 
-    dietary_icons = menu_entry.get('dietary_icons', []) if menu_entry else []
+    # Filter here too: entries for past dates aren't re-scraped, so they may hold stale icons
+    dietary_icons = [i for i in (menu_entry.get('dietary_icons', []) if menu_entry else [])
+                     if i in KNOWN_ICONS]
     availability = availability_map.get(rec_num)
 
     return {
