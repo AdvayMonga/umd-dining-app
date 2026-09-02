@@ -11,6 +11,14 @@ from datetime import datetime, timedelta
 
 BASE_URL = "https://nutrition.umd.edu"
 
+# Icons the app knows how to render; anything else UMD adds is dropped.
+# Keep in sync with KNOWN_ICONS in umd-dining-api/scraper.py.
+KNOWN_ICONS = {
+    "vegan", "vegetarian", "HalalFriendly",
+    "Contains dairy", "Contains egg", "Contains fish", "Contains gluten",
+    "Contains nuts", "Contains Shellfish", "Contains sesame", "Contains soy",
+}
+
 DINING_HALLS = {
     "19": {"name": "Yahentamitsi Dining Hall", "location": "South Campus"},
     "51": {"name": "251 North", "location": "North Campus"},
@@ -64,7 +72,8 @@ def parse_menu_page(html, dining_hall_id, date):
                     continue
 
                 # Dietary icons (vegan, vegetarian, dairy, gluten, etc.)
-                icons = [img.get('alt', '') for img in row.find_all('img', class_='nutri-icon')]
+                icons = [alt for img in row.find_all('img', class_='nutri-icon')
+                         if (alt := img.get('alt', '')) in KNOWN_ICONS]
 
                 items.append({
                     "name": name,
