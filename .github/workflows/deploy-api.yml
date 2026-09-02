@@ -1,0 +1,91 @@
+name: Deploy API to Elastic Beanstalk
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "umd-dining-api/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  EB_APP: umd-dining-api
+  EB_ENV: umd-dining-api-prod
+  # sha for traceability; run id/attempt so re-runs never collide on the label
+  VERSION_LABEL: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build source bundle
+        working-directory: umd-dining-api
+        run: |
+          zip -r ../bundle.zip . \
+            -x "venv/*" -x ".venv/*" -x "__pycache__/*" -x "*.pyc" \
+            -x ".env*" -x "*/.env*" -x ".git*" -x ".DS_Store" \
+            -x ".claude/*" -x ".elasticbeanstalk/*"
+
+      - name: Upload and deploy
+        run: |
+          BUCKET=$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)
+          KEY="${EB_APP}/${VERSION_LABEL}.zip"
+          aws s3 cp bundle.zip "s3://${BUCKET}/${KEY}"
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APP" \
+            --version-label "$VERSION_LABEL" \
+            --source-bundle S3Bucket="$BUCKET",S3Key="$KEY"
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENV" \
+            --version-label "$VERSION_LABEL"
+
+      - name: Wait for deploy to complete (up to 30 min)
+        run: |
+          # aws elasticbeanstalk wait caps at ~6m40s with no override flag,
+          # which fails healthy-but-slow deploys — poll instead.
+          for i in $(seq 1 90); do
+            read -r STATUS VERSION <<<"$(aws elasticbeanstalk describe-environments \
+              --environment-names "$EB_ENV" \
+              --query 'Environments[0].[Status,VersionLabel]' --output text)"
+            echo "[$i] status=$STATUS version=$VERSION"
+            if [ "$STATUS" = "Ready" ] && [ "$VERSION" = "$VERSION_LABEL" ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for deploy of $VERSION_LABEL"
+          exit 1
+
+      - name: Verify environment health (up to 5 min)
+        run: |
+          # Enhanced health can read Grey/Yellow for a minute after an update
+          # settles — poll rather than sampling once.
+          for i in $(seq 1 15); do
+            HEALTH=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$EB_ENV" \
+              --query 'Environments[0].Health' --output text)
+            echo "[$i] health=$HEALTH"
+            if [ "$HEALTH" = "Green" ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Environment did not reach Green"
+          exit 1
