@@ -43,5 +43,4 @@ Thumbs.db
 .elasticbeanstalk/
 
 # Lambda deployment artifacts
-lambda/scripts/
 lambda/*.zip
