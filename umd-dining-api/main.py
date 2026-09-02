@@ -104,6 +104,11 @@ async def lifespan(app: FastAPI):
     await db.users.create_index([('user_id', 1)], unique=True)
     await db.users.create_index([('apple_user_id', 1)], sparse=True)
 
+    # Revoked guest tombstones — block deleted guests from self-healing;
+    # expire after 90 days (max token lifetime)
+    await db.revoked_users.create_index([('user_id', 1)], unique=True)
+    await db.revoked_users.create_index([('revoked_at', 1)], expireAfterSeconds=90 * 86400)
+
     # TTL indexes — auto-expire old tracking data and guest accounts
     await db.item_views.create_index([('timestamp', 1)], expireAfterSeconds=90 * 86400)
     await db.search_queries.create_index([('timestamp', 1)], expireAfterSeconds=90 * 86400)
