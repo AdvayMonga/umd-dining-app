@@ -40,7 +40,7 @@ def generate_and_store_embedding(db, rec_num: str, food_doc: dict) -> None:
 
 def cosine_similarity(vec_a: list, vec_b: list) -> float:
     """Cosine similarity in [-1, 1]. Returns 0.0 if either vector is zero-magnitude."""
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=True))
     mag_a = math.sqrt(sum(a * a for a in vec_a))
     mag_b = math.sqrt(sum(b * b for b in vec_b))
     return 0.0 if mag_a == 0.0 or mag_b == 0.0 else dot / (mag_a * mag_b)

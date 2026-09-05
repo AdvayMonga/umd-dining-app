@@ -23,7 +23,12 @@ env:
   VERSION_LABEL: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
+  # Gate: a merge that fails lint or tests must not reach production.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +46,8 @@ jobs:
           zip -r ../bundle.zip . \
             -x "venv/*" -x ".venv/*" -x "__pycache__/*" -x "*.pyc" \
             -x ".env*" -x "*/.env*" -x ".git*" -x ".DS_Store" \
-            -x ".claude/*" -x ".elasticbeanstalk/*"
+            -x ".claude/*" -x ".elasticbeanstalk/*" \
+            -x "tests/*" -x "pytest.ini" -x "ruff.toml" -x "requirements-dev.txt"
 
       - name: Upload and deploy
         run: |

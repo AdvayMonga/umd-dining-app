@@ -6,7 +6,6 @@ import re
 import time
 import threading
 import uuid
-import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Optional

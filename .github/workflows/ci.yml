@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "umd-dining-api/**"
+      - ".github/workflows/ci.yml"
+  # On main, this runs as the deploy workflow's gate rather than standalone,
+  # so a merge doesn't run the same suite twice.
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: umd-dining-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest
