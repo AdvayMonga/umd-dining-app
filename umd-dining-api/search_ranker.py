@@ -11,7 +11,6 @@ Three-stage pipeline:
 """
 
 import re
-import numpy as np
 from embeddings import cosine_similarity
 
 

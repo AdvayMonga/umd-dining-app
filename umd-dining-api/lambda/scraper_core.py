@@ -297,8 +297,9 @@ def scrape_dining_hall(db, location_num, date):
 def _compute_frequencies(db, dining_hall_id, date, items):
     """Count how many distinct dates each rec_num appears at its station (last 14 days)."""
     from pymongo import UpdateOne
-    cutoff = (datetime.now() - timedelta(days=14)).strftime('%-m/%-d/%Y')
 
+    # No explicit date filter needed: scrape_all_dining_halls deletes menus
+    # older than 7 days, so the collection only ever spans ~2 weeks.
     rec_stations = set()
     for item in items:
         rec_stations.add((item['rec_num'], item['station']))

@@ -1,0 +1,22 @@
+# Lint for defects, not formatting opinions: an existing codebase should be
+# able to adopt this without a mass rewrite.
+#
+# Deliberately not enabled (each would rewrite dozens of lines of working,
+# deployed code — worth a dedicated cleanup PR, not a CI gate):
+#   I    import sorting
+#   UP   pyupgrade (datetime.UTC, X | None unions)
+target-version = "py312"
+line-length = 120
+exclude = ["venv", ".venv", "__pycache__"]
+
+[lint]
+select = [
+    "F",   # pyflakes: undefined names, unused imports/variables
+    "E9",  # syntax and IO errors
+    "B",   # bugbear: mutable defaults, misused comparisons, silent bugs
+]
+ignore = [
+    "B008",  # FastAPI's Depends()/Query() defaults are the framework idiom
+    "B904",  # `raise ... from` inside except: worth doing, but it touches
+             # every auth error path — separate PR
+]
